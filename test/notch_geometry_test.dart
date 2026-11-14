@@ -1,8 +1,4 @@
-import 'dart:ui'
-    show
-        DisplayFeature,
-        DisplayFeatureState,
-        DisplayFeatureType;
+import 'dart:ui' show DisplayFeature, DisplayFeatureState, DisplayFeatureType;
 
 import 'package:dynamic_notifications/dynamic_notifications.dart';
 import 'package:flutter/material.dart';
@@ -11,40 +7,43 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('NotchGeometryDetector', () {
-    test('detects centered punch hole when safe area is larger than cutout', () {
-      // Simulates modern Android device (e.g. Pixel 8):
-      // Status bar is 48dp, camera punch hole is at y: 8..32 (height 24dp, bottom 32dp).
-      // Cutout bottom (32) is well inside the safe area (48).
-      const mediaQuery = MediaQueryData(
-        size: Size(412, 915),
-        viewPadding: EdgeInsets.only(top: 48, bottom: 24),
-        devicePixelRatio: 2.625,
-        displayFeatures: [
-          DisplayFeature(
-            bounds: Rect.fromLTWH(194, 8, 24, 24),
-            type: DisplayFeatureType.cutout,
-            state: DisplayFeatureState.unknown,
-          ),
-        ],
-      );
+    test(
+      'detects centered punch hole when safe area is larger than cutout',
+      () {
+        // Simulates modern Android device (e.g. Pixel 8):
+        // Status bar is 48dp, camera punch hole is at y: 8..32 (height 24dp, bottom 32dp).
+        // Cutout bottom (32) is well inside the safe area (48).
+        const mediaQuery = MediaQueryData(
+          size: Size(412, 915),
+          viewPadding: EdgeInsets.only(top: 48, bottom: 24),
+          devicePixelRatio: 2.625,
+          displayFeatures: [
+            DisplayFeature(
+              bounds: Rect.fromLTWH(194, 8, 24, 24),
+              type: DisplayFeatureType.cutout,
+              state: DisplayFeatureState.unknown,
+            ),
+          ],
+        );
 
-      final geometry = NotchGeometryDetector.fromMediaQuery(
-        mediaQuery: mediaQuery,
-        platform: TargetPlatform.android,
-      );
+        final geometry = NotchGeometryDetector.fromMediaQuery(
+          mediaQuery: mediaQuery,
+          platform: TargetPlatform.android,
+        );
 
-      expect(geometry.hasCutout, isTrue);
-      expect(geometry.source, NotchGeometrySource.displayFeature);
-      expect(geometry.confidence, NotchGeometryConfidence.exact);
-      expect(geometry.shape, NotchShape.punchHole);
-      expect(geometry.center, const Offset(206, 20));
-      expect(geometry.width, 24);
-      expect(geometry.height, 24);
-      expect(geometry.bottom, 32);
-      expect(geometry.anchorX, 206);
-      expect(geometry.anchorTop, 31); // 32 - 1 for overlap
-      expect(geometry.devicePixelRatio, 2.625);
-    });
+        expect(geometry.hasCutout, isTrue);
+        expect(geometry.source, NotchGeometrySource.displayFeature);
+        expect(geometry.confidence, NotchGeometryConfidence.exact);
+        expect(geometry.shape, NotchShape.punchHole);
+        expect(geometry.center, const Offset(206, 20));
+        expect(geometry.width, 24);
+        expect(geometry.height, 24);
+        expect(geometry.bottom, 32);
+        expect(geometry.anchorX, 206);
+        expect(geometry.anchorTop, 31); // 32 - 1 for overlap
+        expect(geometry.devicePixelRatio, 2.625);
+      },
+    );
 
     test('detects cutout when cutout extends deeper than status bar padding', () {
       // Flaw in previous implementation: bounds.bottom > safeTop caused cutouts
@@ -74,45 +73,48 @@ void main() {
       expect(geometry.anchorX, 196.5);
     });
 
-    test('handles physical-to-logical conversions across various DPR values', () {
-      for (final dpr in [1.0, 1.5, 2.0, 2.625, 2.75, 3.0, 3.5, 4.0]) {
-        // Physical bounds: 80 physical px wide, 80 physical px high, centered horizontally on 1080px wide screen
-        const physicalScreenWidth = 1080.0;
-        const physicalCutoutSize = 80.0;
-        final logicalWidth = physicalScreenWidth / dpr;
-        final logicalCutoutSize = physicalCutoutSize / dpr;
-        final logicalLeft = (logicalWidth - logicalCutoutSize) / 2;
+    test(
+      'handles physical-to-logical conversions across various DPR values',
+      () {
+        for (final dpr in [1.0, 1.5, 2.0, 2.625, 2.75, 3.0, 3.5, 4.0]) {
+          // Physical bounds: 80 physical px wide, 80 physical px high, centered horizontally on 1080px wide screen
+          const physicalScreenWidth = 1080.0;
+          const physicalCutoutSize = 80.0;
+          final logicalWidth = physicalScreenWidth / dpr;
+          final logicalCutoutSize = physicalCutoutSize / dpr;
+          final logicalLeft = (logicalWidth - logicalCutoutSize) / 2;
 
-        final mediaQuery = MediaQueryData(
-          size: Size(logicalWidth, 2400 / dpr),
-          viewPadding: EdgeInsets.only(top: 100 / dpr),
-          devicePixelRatio: dpr,
-          displayFeatures: [
-            DisplayFeature(
-              bounds: Rect.fromLTWH(
-                logicalLeft,
-                20 / dpr,
-                logicalCutoutSize,
-                logicalCutoutSize,
+          final mediaQuery = MediaQueryData(
+            size: Size(logicalWidth, 2400 / dpr),
+            viewPadding: EdgeInsets.only(top: 100 / dpr),
+            devicePixelRatio: dpr,
+            displayFeatures: [
+              DisplayFeature(
+                bounds: Rect.fromLTWH(
+                  logicalLeft,
+                  20 / dpr,
+                  logicalCutoutSize,
+                  logicalCutoutSize,
+                ),
+                type: DisplayFeatureType.cutout,
+                state: DisplayFeatureState.unknown,
               ),
-              type: DisplayFeatureType.cutout,
-              state: DisplayFeatureState.unknown,
-            ),
-          ],
-        );
+            ],
+          );
 
-        final geometry = NotchGeometryDetector.fromMediaQuery(
-          mediaQuery: mediaQuery,
-          platform: TargetPlatform.android,
-        );
+          final geometry = NotchGeometryDetector.fromMediaQuery(
+            mediaQuery: mediaQuery,
+            platform: TargetPlatform.android,
+          );
 
-        expect(geometry.hasCutout, isTrue);
-        expect(geometry.devicePixelRatio, dpr);
-        expect(geometry.anchorX, closeTo(logicalWidth / 2, 0.001));
-        expect(geometry.bottom, closeTo(100 / dpr, 0.001));
-        expect(geometry.anchorTop, closeTo((100 / dpr) - 1.0, 0.001));
-      }
-    });
+          expect(geometry.hasCutout, isTrue);
+          expect(geometry.devicePixelRatio, dpr);
+          expect(geometry.anchorX, closeTo(logicalWidth / 2, 0.001));
+          expect(geometry.bottom, closeTo(100 / dpr, 0.001));
+          expect(geometry.anchorTop, closeTo((100 / dpr) - 1.0, 0.001));
+        }
+      },
+    );
 
     test('correctly anchors off-center cutouts on left and right', () {
       // Off-center left punch hole (e.g. Galaxy S10 / OnePlus Nord)
@@ -186,72 +188,81 @@ void main() {
       expect(geometry.center.dx, 204.0);
     });
 
-    test('gracefully falls back when display features are missing on Android', () {
-      // Older Android (API < 28) or letterboxed window mode with status bar
-      const noCutouts = MediaQueryData(
-        size: Size(360, 640),
-        viewPadding: EdgeInsets.only(top: 24),
-        displayFeatures: [],
-      );
+    test(
+      'gracefully falls back when display features are missing on Android',
+      () {
+        // Older Android (API < 28) or letterboxed window mode with status bar
+        const noCutouts = MediaQueryData(
+          size: Size(360, 640),
+          viewPadding: EdgeInsets.only(top: 24),
+          displayFeatures: [],
+        );
 
-      final geometry = NotchGeometryDetector.fromMediaQuery(
-        mediaQuery: noCutouts,
-        platform: TargetPlatform.android,
-      );
+        final geometry = NotchGeometryDetector.fromMediaQuery(
+          mediaQuery: noCutouts,
+          platform: TargetPlatform.android,
+        );
 
-      expect(geometry.hasCutout, isFalse);
-      expect(geometry.source, NotchGeometrySource.safeArea);
-      expect(geometry.confidence, NotchGeometryConfidence.fallback);
-      expect(geometry.shape, NotchShape.none);
-      expect(geometry.bottom, 24.0);
-      expect(geometry.anchorTop, 24.0);
-      expect(geometry.anchorX, 180.0);
-    });
+        expect(geometry.hasCutout, isFalse);
+        expect(geometry.source, NotchGeometrySource.safeArea);
+        expect(geometry.confidence, NotchGeometryConfidence.fallback);
+        expect(geometry.shape, NotchShape.none);
+        expect(geometry.bottom, 24.0);
+        expect(geometry.anchorTop, 24.0);
+        expect(geometry.anchorX, 180.0);
+      },
+    );
 
-    test('handles device with zero insets (tablet, desktop, or edge-to-edge game)', () {
-      const zeroInsets = MediaQueryData(
-        size: Size(1024, 768),
-        viewPadding: EdgeInsets.zero,
-        displayFeatures: [],
-      );
+    test(
+      'handles device with zero insets (tablet, desktop, or edge-to-edge game)',
+      () {
+        const zeroInsets = MediaQueryData(
+          size: Size(1024, 768),
+          viewPadding: EdgeInsets.zero,
+          displayFeatures: [],
+        );
 
-      final geometry = NotchGeometryDetector.fromMediaQuery(
-        mediaQuery: zeroInsets,
-        platform: TargetPlatform.android,
-      );
+        final geometry = NotchGeometryDetector.fromMediaQuery(
+          mediaQuery: zeroInsets,
+          platform: TargetPlatform.android,
+        );
 
-      expect(geometry.hasCutout, isFalse);
-      expect(geometry.source, NotchGeometrySource.none);
-      expect(geometry.confidence, NotchGeometryConfidence.none);
-      expect(geometry.shape, NotchShape.none);
-      expect(geometry.bottom, 0.0);
-      expect(geometry.anchorTop, 0.0);
-      expect(geometry.anchorX, 512.0);
-    });
+        expect(geometry.hasCutout, isFalse);
+        expect(geometry.source, NotchGeometrySource.none);
+        expect(geometry.confidence, NotchGeometryConfidence.none);
+        expect(geometry.shape, NotchShape.none);
+        expect(geometry.bottom, 0.0);
+        expect(geometry.anchorTop, 0.0);
+        expect(geometry.anchorX, 512.0);
+      },
+    );
 
-    test('ignores side cutouts in landscape orientation for top drop origin', () {
-      // In landscape, phone camera is on the left or right edge
-      const landscapePhone = MediaQueryData(
-        size: Size(892, 412),
-        viewPadding: EdgeInsets.only(left: 48),
-        displayFeatures: [
-          DisplayFeature(
-            bounds: Rect.fromLTWH(10, 194, 24, 24),
-            type: DisplayFeatureType.cutout,
-            state: DisplayFeatureState.unknown,
-          ),
-        ],
-      );
+    test(
+      'ignores side cutouts in landscape orientation for top drop origin',
+      () {
+        // In landscape, phone camera is on the left or right edge
+        const landscapePhone = MediaQueryData(
+          size: Size(892, 412),
+          viewPadding: EdgeInsets.only(left: 48),
+          displayFeatures: [
+            DisplayFeature(
+              bounds: Rect.fromLTWH(10, 194, 24, 24),
+              type: DisplayFeatureType.cutout,
+              state: DisplayFeatureState.unknown,
+            ),
+          ],
+        );
 
-      final geometry = NotchGeometryDetector.fromMediaQuery(
-        mediaQuery: landscapePhone,
-        platform: TargetPlatform.android,
-      );
+        final geometry = NotchGeometryDetector.fromMediaQuery(
+          mediaQuery: landscapePhone,
+          platform: TargetPlatform.android,
+        );
 
-      // The side cutout is not on the top edge, so it should not be used as a top drop anchor
-      expect(geometry.hasCutout, isFalse);
-      expect(geometry.source, NotchGeometrySource.none);
-    });
+        // The side cutout is not on the top edge, so it should not be used as a top drop anchor
+        expect(geometry.hasCutout, isFalse);
+        expect(geometry.source, NotchGeometrySource.none);
+      },
+    );
 
     test('calibrates iOS notch and Dynamic Island profiles accurately', () {
       // iPhone SE / iPad (no notch)
@@ -555,40 +566,41 @@ void main() {
       expect(tester.getTopLeft(overlay).dy, 34.0); // 35 - 1 = 34
     });
 
-    testWidgets('adapts seamlessly during dynamic screen rotation and metric change', (
-      tester,
-    ) async {
-      // Start in portrait with a centered top punch hole
-      tester.view.physicalSize = const Size(1080, 2400);
-      tester.view.devicePixelRatio = 2.625;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+    testWidgets(
+      'adapts seamlessly during dynamic screen rotation and metric change',
+      (tester) async {
+        // Start in portrait with a centered top punch hole
+        tester.view.physicalSize = const Size(1080, 2400);
+        tester.view.devicePixelRatio = 2.625;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: DynamicNotifications(
-            controller: controller,
-            child: const Scaffold(body: Center(child: Text('Content'))),
+        await tester.pumpWidget(
+          MaterialApp(
+            home: DynamicNotifications(
+              controller: controller,
+              child: const Scaffold(body: Center(child: Text('Content'))),
+            ),
           ),
-        ),
-      );
+        );
 
-      controller.show(
-        const DynamicNotification(title: 'Rotation Test', duration: null),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
+        controller.show(
+          const DynamicNotification(title: 'Rotation Test', duration: null),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
 
-      expect(tester.takeException(), isNull);
+        expect(tester.takeException(), isNull);
 
-      // Rotate to landscape
-      tester.view.physicalSize = const Size(2400, 1080);
-      await tester.pump();
-      await tester.pumpAndSettle();
+        // Rotate to landscape
+        tester.view.physicalSize = const Size(2400, 1080);
+        await tester.pump();
+        await tester.pumpAndSettle();
 
-      expect(find.text('Rotation Test'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
+        expect(find.text('Rotation Test'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
 
     testWidgets('accurately positions water drop for Android deep punch hole', (
       tester,
@@ -608,10 +620,7 @@ void main() {
                 ),
               ],
             ),
-            child: DynamicNotifications(
-              controller: controller,
-              child: child!,
-            ),
+            child: DynamicNotifications(controller: controller, child: child!),
           ),
           home: const Scaffold(body: Center(child: Text('Content'))),
         ),
@@ -634,317 +643,334 @@ void main() {
       expect(find.text('Deep Cutout'), findsOneWidget);
     });
 
-    testWidgets('allows injecting custom geometryOverride with hasCutout false', (
-      tester,
-    ) async {
-      const fallbackGeometry = NotchGeometry(
-        bounds: null,
-        center: Offset(200, 15),
-        width: 0,
-        height: 0,
-        top: 0,
-        bottom: 30,
-        screenSize: Size(400, 800),
-        insets: EdgeInsets.only(top: 30),
-        source: NotchGeometrySource.safeArea,
-        confidence: NotchGeometryConfidence.fallback,
-        shape: NotchShape.none,
-        hasCutout: false,
-      );
+    testWidgets(
+      'allows injecting custom geometryOverride with hasCutout false',
+      (tester) async {
+        const fallbackGeometry = NotchGeometry(
+          bounds: null,
+          center: Offset(200, 15),
+          width: 0,
+          height: 0,
+          top: 0,
+          bottom: 30,
+          screenSize: Size(400, 800),
+          insets: EdgeInsets.only(top: 30),
+          source: NotchGeometrySource.safeArea,
+          confidence: NotchGeometryConfidence.fallback,
+          shape: NotchShape.none,
+          hasCutout: false,
+        );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: DynamicNotifications(
-            controller: controller,
-            geometryOverride: fallbackGeometry,
-            child: const Scaffold(body: Center(child: Text('Content'))),
-          ),
-        ),
-      );
-
-      controller.show(
-        const DynamicNotification(title: 'Fallback Test', duration: null),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
-
-      final overlay = find.byKey(const ValueKey('dynamic-notification-shape'));
-      // Custom fallback anchorTop (30.0) is respected instead of falling back to default safeTop
-      expect(tester.getTopLeft(overlay).dy, 30.0);
-    });
-
-    testWidgets('water-drop painter arches upward and overlaps into hardware cutout for punch hole', (
-      tester,
-    ) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: ThemeData(platform: TargetPlatform.android),
-          builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(context).copyWith(
-              viewPadding: const EdgeInsets.only(top: 40),
-              displayFeatures: const [
-                DisplayFeature(
-                  bounds: Rect.fromLTWH(388, 8, 24, 24), // center is 400, bottom is 32
-                  type: DisplayFeatureType.cutout,
-                  state: DisplayFeatureState.unknown,
-                ),
-              ],
-            ),
-            child: DynamicNotifications(
+        await tester.pumpWidget(
+          MaterialApp(
+            home: DynamicNotifications(
               controller: controller,
-              child: child!,
+              geometryOverride: fallbackGeometry,
+              child: const Scaffold(body: Center(child: Text('Content'))),
             ),
           ),
-          home: const Scaffold(body: Center(child: Text('Content'))),
-        ),
-      );
+        );
 
-      controller.show(
-        const DynamicNotification(title: 'Overlap Test', duration: null),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
+        controller.show(
+          const DynamicNotification(title: 'Fallback Test', duration: null),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
 
-      final overlay = find.byKey(const ValueKey('dynamic-notification-shape'));
-      final center = tester.getSize(overlay).width / 2;
+        final overlay = find.byKey(
+          const ValueKey('dynamic-notification-shape'),
+        );
+        // Custom fallback anchorTop (30.0) is respected instead of falling back to default safeTop
+        expect(tester.getTopLeft(overlay).dy, 30.0);
+      },
+    );
 
-      // Verify that local Y = 1 is covered as before
-      // AND verify that local Y = -1 is ALSO covered by the upward curvature into the cutout
-      // (eliminating subpixel anti-aliasing seams and circular curvature gap)
-      expect(
-        overlay,
-        paints
-          ..path(
+    testWidgets(
+      'water-drop painter arches upward and overlaps into hardware cutout for punch hole',
+      (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: ThemeData(platform: TargetPlatform.android),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                viewPadding: const EdgeInsets.only(top: 40),
+                displayFeatures: const [
+                  DisplayFeature(
+                    bounds: Rect.fromLTWH(
+                      388,
+                      8,
+                      24,
+                      24,
+                    ), // center is 400, bottom is 32
+                    type: DisplayFeatureType.cutout,
+                    state: DisplayFeatureState.unknown,
+                  ),
+                ],
+              ),
+              child: DynamicNotifications(
+                controller: controller,
+                child: child!,
+              ),
+            ),
+            home: const Scaffold(body: Center(child: Text('Content'))),
+          ),
+        );
+
+        controller.show(
+          const DynamicNotification(title: 'Overlap Test', duration: null),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+
+        final overlay = find.byKey(
+          const ValueKey('dynamic-notification-shape'),
+        );
+        final center = tester.getSize(overlay).width / 2;
+
+        // Verify that local Y = 1 is covered as before
+        // AND verify that local Y = -1 is ALSO covered by the upward curvature into the cutout
+        // (eliminating subpixel anti-aliasing seams and circular curvature gap)
+        expect(
+          overlay,
+          paints..path(
             color: Colors.black,
-            includes: [
-              Offset(center, 1),
-              Offset(center, -1),
-            ],
-            excludes: [
-              Offset(center + 36, 1),
-              Offset(center + 36, -1),
-            ],
+            includes: [Offset(center, 1), Offset(center, -1)],
+            excludes: [Offset(center + 36, 1), Offset(center + 36, -1)],
           ),
-      );
-    });
+        );
+      },
+    );
 
-    testWidgets('handles edge-to-edge mode with zero padding and cutout without throwing RenderPadding assertion', (
-      tester,
-    ) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: ThemeData(platform: TargetPlatform.android),
-          builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(context).copyWith(
-              viewPadding: EdgeInsets.zero,
-              padding: EdgeInsets.zero,
-              displayFeatures: const [
-                DisplayFeature(
-                  bounds: Rect.fromLTWH(188, 10, 24, 34), // bottom 44 > 0
-                  type: DisplayFeatureType.cutout,
-                  state: DisplayFeatureState.unknown,
-                ),
-              ],
+    testWidgets(
+      'handles edge-to-edge mode with zero padding and cutout without throwing RenderPadding assertion',
+      (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: ThemeData(platform: TargetPlatform.android),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                viewPadding: EdgeInsets.zero,
+                padding: EdgeInsets.zero,
+                displayFeatures: const [
+                  DisplayFeature(
+                    bounds: Rect.fromLTWH(188, 10, 24, 34), // bottom 44 > 0
+                    type: DisplayFeatureType.cutout,
+                    state: DisplayFeatureState.unknown,
+                  ),
+                ],
+              ),
+              child: DynamicNotifications(
+                controller: controller,
+                child: child!,
+              ),
             ),
-            child: DynamicNotifications(
+            home: const Scaffold(body: Center(child: Text('Content'))),
+          ),
+        );
+
+        controller.show(
+          const DynamicNotification(title: 'Immersive App', duration: null),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(tester.takeException(), isNull);
+        await tester.pumpAndSettle();
+        expect(find.text('Immersive App'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'painter clipRect encloses entire tail horizontally for off-center cutout',
+      (tester) async {
+        // Off-center cutout on an 800-wide display resulting in centerX < -24.
+        // Tail extends to centerX - neck * 1.25, which is further left than rect.left.
+        const offCenterGeometry = NotchGeometry(
+          bounds: Rect.fromLTWH(40, 8, 24, 24),
+          center: Offset(52, 20),
+          width: 24,
+          height: 24,
+          top: 8,
+          bottom: 32,
+          screenSize: Size(800, 600),
+          insets: EdgeInsets.only(top: 40),
+          source: NotchGeometrySource.displayFeature,
+          confidence: NotchGeometryConfidence.exact,
+          shape: NotchShape.punchHole,
+          hasCutout: true,
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: DynamicNotifications(
               controller: controller,
-              child: child!,
+              geometryOverride: offCenterGeometry,
+              child: const Scaffold(body: Center(child: Text('Content'))),
             ),
           ),
-          home: const Scaffold(body: Center(child: Text('Content'))),
-        ),
-      );
+        );
 
-      controller.show(
-        const DynamicNotification(title: 'Immersive App', duration: null),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
-      expect(tester.takeException(), isNull);
-      await tester.pumpAndSettle();
-      expect(find.text('Immersive App'), findsOneWidget);
-    });
+        controller.show(
+          const DynamicNotification(title: 'Clip Test', duration: null),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
 
-    testWidgets('painter clipRect encloses entire tail horizontally for off-center cutout', (
-      tester,
-    ) async {
-      // Off-center cutout on an 800-wide display resulting in centerX < -24.
-      // Tail extends to centerX - neck * 1.25, which is further left than rect.left.
-      const offCenterGeometry = NotchGeometry(
-        bounds: Rect.fromLTWH(40, 8, 24, 24),
-        center: Offset(52, 20),
-        width: 24,
-        height: 24,
-        top: 8,
-        bottom: 32,
-        screenSize: Size(800, 600),
-        insets: EdgeInsets.only(top: 40),
-        source: NotchGeometrySource.displayFeature,
-        confidence: NotchGeometryConfidence.exact,
-        shape: NotchShape.punchHole,
-        hasCutout: true,
-      );
+        final overlay = find.byKey(
+          const ValueKey('dynamic-notification-shape'),
+        );
+        // Tail's left edge is around -168dp. The clipRect must not clip the tail.
+        expect(
+          overlay,
+          paints..something((Symbol method, List<dynamic> arguments) {
+            if (method == #clipRect) {
+              final rect = arguments[0] as Rect;
+              return rect.left <= -168.0;
+            }
+            return false;
+          }),
+        );
+      },
+    );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: DynamicNotifications(
-            controller: controller,
-            geometryOverride: offCenterGeometry,
-            child: const Scaffold(body: Center(child: Text('Content'))),
-          ),
-        ),
-      );
+    testWidgets(
+      'painter does not paint negative screen coordinates when anchorTop is zero',
+      (tester) async {
+        // Hardware cutout touching top edge with bottom=1, anchorTop = max(0, 1 - 1) = 0.
+        const zeroAnchorGeometry = NotchGeometry(
+          bounds: Rect.fromLTWH(188, 0, 24, 1),
+          center: Offset(200, 0.5),
+          width: 24,
+          height: 1,
+          top: 0,
+          bottom: 1,
+          screenSize: Size(400, 800),
+          insets: EdgeInsets.zero,
+          source: NotchGeometrySource.displayFeature,
+          confidence: NotchGeometryConfidence.exact,
+          shape: NotchShape.punchHole,
+          hasCutout: true,
+        );
 
-      controller.show(
-        const DynamicNotification(title: 'Clip Test', duration: null),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
-
-      final overlay = find.byKey(const ValueKey('dynamic-notification-shape'));
-      // Tail's left edge is around -168dp. The clipRect must not clip the tail.
-      expect(
-        overlay,
-        paints..something((Symbol method, List<dynamic> arguments) {
-          if (method == #clipRect) {
-            final rect = arguments[0] as Rect;
-            return rect.left <= -168.0;
-          }
-          return false;
-        }),
-      );
-    });
-
-    testWidgets('painter does not paint negative screen coordinates when anchorTop is zero', (
-      tester,
-    ) async {
-      // Hardware cutout touching top edge with bottom=1, anchorTop = max(0, 1 - 1) = 0.
-      const zeroAnchorGeometry = NotchGeometry(
-        bounds: Rect.fromLTWH(188, 0, 24, 1),
-        center: Offset(200, 0.5),
-        width: 24,
-        height: 1,
-        top: 0,
-        bottom: 1,
-        screenSize: Size(400, 800),
-        insets: EdgeInsets.zero,
-        source: NotchGeometrySource.displayFeature,
-        confidence: NotchGeometryConfidence.exact,
-        shape: NotchShape.punchHole,
-        hasCutout: true,
-      );
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: DynamicNotifications(
-            controller: controller,
-            geometryOverride: zeroAnchorGeometry,
-            child: const Scaffold(body: Center(child: Text('Content'))),
-          ),
-        ),
-      );
-
-      controller.show(
-        const DynamicNotification(title: 'Zero Anchor', duration: null),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
-
-      final overlay = find.byKey(const ValueKey('dynamic-notification-shape'));
-      // When anchorTop == 0, painting at Y < 0 would paint above the screen.
-      // clipRect must not allow negative screen coordinates.
-      expect(
-        overlay,
-        paints..something((Symbol method, List<dynamic> arguments) {
-          if (method == #clipRect) {
-            final rect = arguments[0] as Rect;
-            return rect.top >= 0.0;
-          }
-          return false;
-        }),
-      );
-    });
-
-    testWidgets('respects MediaQuery.padding when viewPadding is zero without cutout', (
-      tester,
-    ) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(context).copyWith(
-              padding: const EdgeInsets.only(top: 36),
-              viewPadding: EdgeInsets.zero,
-              displayFeatures: const [],
-            ),
-            child: DynamicNotifications(
+        await tester.pumpWidget(
+          MaterialApp(
+            home: DynamicNotifications(
               controller: controller,
-              child: child!,
+              geometryOverride: zeroAnchorGeometry,
+              child: const Scaffold(body: Center(child: Text('Content'))),
             ),
           ),
-          home: const Scaffold(body: Center(child: Text('Content'))),
-        ),
-      );
+        );
 
-      controller.show(
-        const DynamicNotification(title: 'Padding Fallback', duration: null),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
+        controller.show(
+          const DynamicNotification(title: 'Zero Anchor', duration: null),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
 
-      final overlay = find.byKey(const ValueKey('dynamic-notification-shape'));
-      // safeTop should be padding.top + 4 = 36 + 4 = 40.0
-      expect(tester.getTopLeft(overlay).dy, 40.0);
-    });
+        final overlay = find.byKey(
+          const ValueKey('dynamic-notification-shape'),
+        );
+        // When anchorTop == 0, painting at Y < 0 would paint above the screen.
+        // clipRect must not allow negative screen coordinates.
+        expect(
+          overlay,
+          paints..something((Symbol method, List<dynamic> arguments) {
+            if (method == #clipRect) {
+              final rect = arguments[0] as Rect;
+              return rect.top >= 0.0;
+            }
+            return false;
+          }),
+        );
+      },
+    );
 
-    testWidgets('painter clipRect allows shadow headroom above card when anchorTop > 0', (
-      tester,
-    ) async {
-      // Screen with anchorTop = 32.0 (cutout bottom = 33, anchorTop = 32).
-      const testGeometry = NotchGeometry(
-        bounds: Rect.fromLTWH(188, 8, 24, 24),
-        center: Offset(200, 20),
-        width: 24,
-        height: 24,
-        top: 8,
-        bottom: 33,
-        screenSize: Size(400, 800),
-        insets: EdgeInsets.only(top: 32),
-        source: NotchGeometrySource.displayFeature,
-        confidence: NotchGeometryConfidence.exact,
-        shape: NotchShape.punchHole,
-        hasCutout: true,
-      );
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: DynamicNotifications(
-            controller: controller,
-            geometryOverride: testGeometry,
-            child: const Scaffold(body: Center(child: Text('Content'))),
+    testWidgets(
+      'respects MediaQuery.padding when viewPadding is zero without cutout',
+      (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                padding: const EdgeInsets.only(top: 36),
+                viewPadding: EdgeInsets.zero,
+                displayFeatures: const [],
+              ),
+              child: DynamicNotifications(
+                controller: controller,
+                child: child!,
+              ),
+            ),
+            home: const Scaffold(body: Center(child: Text('Content'))),
           ),
-        ),
-      );
+        );
 
-      controller.show(
-        const DynamicNotification(title: 'Shadow Test', duration: null),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
+        controller.show(
+          const DynamicNotification(title: 'Padding Fallback', duration: null),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
 
-      final overlay = find.byKey(const ValueKey('dynamic-notification-shape'));
-      // When anchorTop == 32, local y = -16 maps to screen y = 16 >= 0.
-      // clipRect should allow shadow headroom (up to -16) rather than clipping at -3.5 or 0.
-      expect(
-        overlay,
-        paints..something((Symbol method, List<dynamic> arguments) {
-          if (method == #clipRect) {
-            final rect = arguments[0] as Rect;
-            return rect.top <= -10.0;
-          }
-          return false;
-        }),
-      );
-    });
+        final overlay = find.byKey(
+          const ValueKey('dynamic-notification-shape'),
+        );
+        // safeTop should be padding.top + 4 = 36 + 4 = 40.0
+        expect(tester.getTopLeft(overlay).dy, 40.0);
+      },
+    );
+
+    testWidgets(
+      'painter clipRect allows shadow headroom above card when anchorTop > 0',
+      (tester) async {
+        // Screen with anchorTop = 32.0 (cutout bottom = 33, anchorTop = 32).
+        const testGeometry = NotchGeometry(
+          bounds: Rect.fromLTWH(188, 8, 24, 24),
+          center: Offset(200, 20),
+          width: 24,
+          height: 24,
+          top: 8,
+          bottom: 33,
+          screenSize: Size(400, 800),
+          insets: EdgeInsets.only(top: 32),
+          source: NotchGeometrySource.displayFeature,
+          confidence: NotchGeometryConfidence.exact,
+          shape: NotchShape.punchHole,
+          hasCutout: true,
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: DynamicNotifications(
+              controller: controller,
+              geometryOverride: testGeometry,
+              child: const Scaffold(body: Center(child: Text('Content'))),
+            ),
+          ),
+        );
+
+        controller.show(
+          const DynamicNotification(title: 'Shadow Test', duration: null),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+
+        final overlay = find.byKey(
+          const ValueKey('dynamic-notification-shape'),
+        );
+        // When anchorTop == 32, local y = -16 maps to screen y = 16 >= 0.
+        // clipRect should allow shadow headroom (up to -16) rather than clipping at -3.5 or 0.
+        expect(
+          overlay,
+          paints..something((Symbol method, List<dynamic> arguments) {
+            if (method == #clipRect) {
+              final rect = arguments[0] as Rect;
+              return rect.top <= -10.0;
+            }
+            return false;
+          }),
+        );
+      },
+    );
 
     test('ignores side punch hole in immersive landscape with zero insets', () {
       // In immersive landscape mode, insets are zero. A punch hole is physically
@@ -1022,30 +1048,30 @@ void main() {
     test('AndroidCutoutGeometryProvider queries native cutoutPath (API 31+) and constructs NotchGeometry', () async {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(
-        const MethodChannel('dynamic_notifications/android_geometry'),
-        (call) async {
-          if (call.method == 'getCutoutGeometry') {
-            return <String, dynamic>{
-              'deviceModel': 'Pixel 7a',
-              'apiLevel': 34,
-              'targetSdk': 34,
-              'hasCutout': true,
-              'hasPath': true,
-              'pathLeft': 507.0,
-              'pathTop': 33.0,
-              'pathRight': 573.0,
-              'pathBottom': 99.0,
-              'pathWidth': 66.0,
-              'pathHeight': 66.0,
-              'boundLeft': 480.0,
-              'boundTop': 0.0,
-              'boundRight': 625.0,
-              'boundBottom': 118.0,
-            };
-          }
-          return null;
-        },
-      );
+            const MethodChannel('dynamic_notifications/android_geometry'),
+            (call) async {
+              if (call.method == 'getCutoutGeometry') {
+                return <String, dynamic>{
+                  'deviceModel': 'Pixel 7a',
+                  'apiLevel': 34,
+                  'targetSdk': 34,
+                  'hasCutout': true,
+                  'hasPath': true,
+                  'pathLeft': 507.0,
+                  'pathTop': 33.0,
+                  'pathRight': 573.0,
+                  'pathBottom': 99.0,
+                  'pathWidth': 66.0,
+                  'pathHeight': 66.0,
+                  'boundLeft': 480.0,
+                  'boundTop': 0.0,
+                  'boundRight': 625.0,
+                  'boundBottom': 118.0,
+                };
+              }
+              return null;
+            },
+          );
 
       final provider = AndroidCutoutGeometryProvider();
       const mediaQuery = MediaQueryData(
@@ -1075,24 +1101,24 @@ void main() {
     test('AndroidCutoutGeometryProvider falls back to boundingRects when cutoutPath is unavailable', () async {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(
-        const MethodChannel('dynamic_notifications/android_geometry'),
-        (call) async {
-          if (call.method == 'getCutoutGeometry') {
-            return <String, dynamic>{
-              'deviceModel': 'Galaxy S10',
-              'apiLevel': 29,
-              'targetSdk': 29,
-              'hasCutout': true,
-              'hasPath': false,
-              'boundLeft': 750.0,
-              'boundTop': 0.0,
-              'boundRight': 950.0,
-              'boundBottom': 100.0,
-            };
-          }
-          return null;
-        },
-      );
+            const MethodChannel('dynamic_notifications/android_geometry'),
+            (call) async {
+              if (call.method == 'getCutoutGeometry') {
+                return <String, dynamic>{
+                  'deviceModel': 'Galaxy S10',
+                  'apiLevel': 29,
+                  'targetSdk': 29,
+                  'hasCutout': true,
+                  'hasPath': false,
+                  'boundLeft': 750.0,
+                  'boundTop': 0.0,
+                  'boundRight': 950.0,
+                  'boundBottom': 100.0,
+                };
+              }
+              return null;
+            },
+          );
 
       final provider = AndroidCutoutGeometryProvider();
       const mediaQuery = MediaQueryData(
@@ -1111,7 +1137,54 @@ void main() {
       expect(geo.width, 100.0);
     });
 
-    testWidgets('DynamicNotifications renders visual guides when debugShowGuides is enabled', (tester) async {
+    testWidgets(
+      'DynamicNotifications renders visual guides when debugShowGuides is enabled',
+      (tester) async {
+        final ctrl = DynamicNotificationController();
+        const testGeometry = NotchGeometry(
+          bounds: Rect.fromLTWH(188, 8, 24, 24),
+          center: Offset(200, 20),
+          width: 24,
+          height: 24,
+          top: 8,
+          bottom: 32,
+          screenSize: Size(400, 800),
+          insets: EdgeInsets.only(top: 32),
+          source: NotchGeometrySource.displayFeature,
+          confidence: NotchGeometryConfidence.exact,
+          shape: NotchShape.punchHole,
+          hasCutout: true,
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: DynamicNotifications(
+              controller: ctrl,
+              geometryOverride: testGeometry,
+              debugShowGuides: true,
+              child: const Scaffold(body: Center(child: Text('Content'))),
+            ),
+          ),
+        );
+
+        ctrl.show(
+          const DynamicNotification(title: 'Debug Guides Test', duration: null),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+
+        final overlay = find.byKey(
+          const ValueKey('dynamic-notification-shape'),
+        );
+        expect(overlay, findsOneWidget);
+        // Verify debug guides painted (rect, lines for crosshair & neck guide)
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets('DynamicNotifications renders smoothly on entrance and exit', (
+      tester,
+    ) async {
       final ctrl = DynamicNotificationController();
       const testGeometry = NotchGeometry(
         bounds: Rect.fromLTWH(188, 8, 24, 24),
@@ -1133,56 +1206,22 @@ void main() {
           home: DynamicNotifications(
             controller: ctrl,
             geometryOverride: testGeometry,
-            debugShowGuides: true,
             child: const Scaffold(body: Center(child: Text('Content'))),
           ),
         ),
       );
 
-      ctrl.show(const DynamicNotification(title: 'Debug Guides Test', duration: null));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
-
-      final overlay = find.byKey(const ValueKey('dynamic-notification-shape'));
-      expect(overlay, findsOneWidget);
-      // Verify debug guides painted (rect, lines for crosshair & neck guide)
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('DynamicNotifications renders smoothly with NotificationRenderMode.experimentalLiquid on entrance and exit', (tester) async {
-      final ctrl = DynamicNotificationController();
-      const testGeometry = NotchGeometry(
-        bounds: Rect.fromLTWH(188, 8, 24, 24),
-        center: Offset(200, 20),
-        width: 24,
-        height: 24,
-        top: 8,
-        bottom: 32,
-        screenSize: Size(400, 800),
-        insets: EdgeInsets.only(top: 32),
-        source: NotchGeometrySource.displayFeature,
-        confidence: NotchGeometryConfidence.exact,
-        shape: NotchShape.punchHole,
-        hasCutout: true,
+      ctrl.show(
+        const DynamicNotification(title: 'Standard Mode Test', duration: null),
       );
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: DynamicNotifications(
-            controller: ctrl,
-            geometryOverride: testGeometry,
-            renderMode: NotificationRenderMode.experimentalLiquid,
-            child: const Scaffold(body: Center(child: Text('Content'))),
-          ),
-        ),
-      );
-
-      ctrl.show(const DynamicNotification(title: 'Liquid Mode Test', duration: null));
       await tester.pump();
 
       // Entrance bridge phase
       await tester.pump(const Duration(milliseconds: 150));
-      expect(find.byKey(const ValueKey('dynamic-notification-shape')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('dynamic-notification-shape')),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
 
       // Expansion phase
@@ -1191,7 +1230,7 @@ void main() {
 
       // Fully settled
       await tester.pumpAndSettle();
-      expect(find.text('Liquid Mode Test').hitTestable(), findsOneWidget);
+      expect(find.text('Standard Mode Test').hitTestable(), findsOneWidget);
 
       // Dismissal / exit absorption phase
       ctrl.dismiss();
@@ -1199,288 +1238,310 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
       expect(tester.takeException(), isNull);
       await tester.pumpAndSettle();
-      expect(find.text('Liquid Mode Test'), findsNothing);
+      expect(find.text('Standard Mode Test'), findsNothing);
     });
 
-    testWidgets('DynamicNotifications with NotificationRenderMode.experimentalLiquid does not paint negative screen coordinates when anchorTop is zero', (tester) async {
-      final ctrl = DynamicNotificationController();
-      const testGeometry = NotchGeometry(
-        bounds: Rect.fromLTRB(188, 0, 212, 0),
-        center: Offset(200, 0),
-        width: 24,
-        height: 0,
-        top: 0,
-        bottom: 0,
-        screenSize: Size(400, 800),
-        insets: EdgeInsets.zero,
-        source: NotchGeometrySource.none,
-        confidence: NotchGeometryConfidence.none,
-        shape: NotchShape.punchHole,
-        hasCutout: true,
-      );
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: DynamicNotifications(
-            controller: ctrl,
-            geometryOverride: testGeometry,
-            renderMode: NotificationRenderMode.experimentalLiquid,
-            child: const Scaffold(body: Center(child: Text('Zero Anchor'))),
-          ),
-        ),
-      );
-
-      ctrl.show(const DynamicNotification(title: 'Edge Screen', duration: null));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 80));
-
-      final customPaintFinder = find.byKey(const ValueKey('dynamic-notification-shape'));
-      expect(customPaintFinder, findsOneWidget);
-      expect(tester.takeException(), isNull);
-      await tester.pumpAndSettle();
-    });
-
-    testWidgets('NotchGeometryDetector.detect ignores cached Android geometry on iOS platform', (tester) async {
-      final provider = AndroidCutoutGeometryProvider.instance;
-      const cachedGeo = NotchGeometry(
-        bounds: Rect.fromLTWH(188, 10, 24, 24),
-        center: Offset(200, 22),
-        width: 24,
-        height: 24,
-        top: 10,
-        bottom: 34,
-        screenSize: Size(400, 800),
-        insets: EdgeInsets.only(top: 34),
-        source: NotchGeometrySource.nativePath,
-        confidence: NotchGeometryConfidence.exact,
-        shape: NotchShape.punchHole,
-        hasCutout: true,
-      );
-
-      provider.cachedForTesting = cachedGeo;
-      addTearDown(() => provider.clear());
-
-      // Build context with iOS platform and safe area of 59pt (iPhone Dynamic Island)
-      late NotchGeometry detected;
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: ThemeData(platform: TargetPlatform.iOS),
-          home: MediaQuery(
-            data: const MediaQueryData(
-              size: Size(393, 852),
-              devicePixelRatio: 3.0,
-              padding: EdgeInsets.only(top: 59),
-            ),
-            child: Builder(
-              builder: (context) {
-                detected = NotchGeometryDetector.detect(context);
-                return const SizedBox();
-              },
-            ),
-          ),
-        ),
-      );
-
-      // Must detect iOS Dynamic Island profile, NOT the Android cached punch hole
-      expect(detected.source, NotchGeometrySource.profile);
-      expect(detected.shape, NotchShape.pill);
-      expect(detected.screenSize, const Size(393, 852));
-    });
-
-    testWidgets('NotchGeometryDetector.detect ignores cached Android geometry when screen size changes', (tester) async {
-      final provider = AndroidCutoutGeometryProvider.instance;
-      const cachedGeo = NotchGeometry(
-        bounds: Rect.fromLTWH(188, 10, 24, 24),
-        center: Offset(200, 22),
-        width: 24,
-        height: 24,
-        top: 10,
-        bottom: 34,
-        screenSize: Size(400, 800),
-        insets: EdgeInsets.only(top: 34),
-        source: NotchGeometrySource.nativePath,
-        confidence: NotchGeometryConfidence.exact,
-        shape: NotchShape.punchHole,
-        hasCutout: true,
-      );
-
-      provider.cachedForTesting = cachedGeo;
-      addTearDown(() => provider.clear());
-
-      late NotchGeometry detectedLandscape;
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: ThemeData(platform: TargetPlatform.android),
-          home: MediaQuery(
-            data: const MediaQueryData(
-              size: Size(800, 400),
-              devicePixelRatio: 1.0,
-              padding: EdgeInsets.only(left: 34),
-            ),
-            child: Builder(
-              builder: (context) {
-                detectedLandscape = NotchGeometryDetector.detect(context);
-                return const SizedBox();
-              },
-            ),
-          ),
-        ),
-      );
-
-      // When size differs, it must not return the stale 400x800 portrait cache
-      expect(detectedLandscape.screenSize, const Size(800, 400));
-    });
-
-    test('AndroidCutoutGeometryProvider handles concurrent load requests safely', () async {
-      final provider = AndroidCutoutGeometryProvider();
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(
-        provider.channel,
-        (call) async {
-          await Future<void>.delayed(const Duration(milliseconds: 50));
-          return <String, dynamic>{
-            'hasCutout': true,
-            'hasPath': true,
-            'pathLeft': 188.0,
-            'pathTop': 10.0,
-            'pathRight': 212.0,
-            'pathBottom': 34.0,
-          };
-        },
-      );
-
-      const mq = MediaQueryData(
-        size: Size(400, 800),
-        devicePixelRatio: 1.0,
-        viewPadding: EdgeInsets.only(top: 34),
-      );
-
-      // Trigger two concurrent load calls
-      final future1 = provider.load(mediaQuery: mq);
-      final future2 = provider.load(mediaQuery: mq);
-
-      final results = await Future.wait([future1, future2]);
-      expect(results[0], isNotNull);
-      expect(results[1], isNotNull);
-      expect(results[0], equals(results[1]));
-      expect(provider.cached, isNotNull);
-      provider.clear();
-    });
-
-    testWidgets('DynamicNotifications switches rendering mode and repaints correctly', (tester) async {
-      final ctrl = DynamicNotificationController();
-      const testGeometry = NotchGeometry(
-        bounds: Rect.fromLTWH(188, 8, 24, 24),
-        center: Offset(200, 20),
-        width: 24,
-        height: 24,
-        top: 8,
-        bottom: 32,
-        screenSize: Size(400, 800),
-        insets: EdgeInsets.only(top: 32),
-        source: NotchGeometrySource.displayFeature,
-        confidence: NotchGeometryConfidence.exact,
-        shape: NotchShape.punchHole,
-        hasCutout: true,
-      );
-
-      // Build with standard mode at progress 0.3
-      await tester.pumpWidget(
-        MaterialApp(
-          home: DynamicNotifications(
-            controller: ctrl,
-            geometryOverride: testGeometry,
-            progressOverride: 0.3,
-            renderMode: NotificationRenderMode.standard,
-            child: const Scaffold(body: Center(child: Text('Content'))),
-          ),
-        ),
-      );
-      await tester.pump();
-
-      var customPaint = tester.widget<CustomPaint>(
-        find.byKey(const ValueKey('dynamic-notification-shape')),
-      );
-      expect(customPaint.painter, isNotNull);
-
-      // Switch to experimental liquid mode at same progress 0.3
-      await tester.pumpWidget(
-        MaterialApp(
-          home: DynamicNotifications(
-            controller: ctrl,
-            geometryOverride: testGeometry,
-            progressOverride: 0.3,
-            renderMode: NotificationRenderMode.experimentalLiquid,
-            child: const Scaffold(body: Center(child: Text('Content'))),
-          ),
-        ),
-      );
-      await tester.pump();
-
-      customPaint = tester.widget<CustomPaint>(
-        find.byKey(const ValueKey('dynamic-notification-shape')),
-      );
-      expect(customPaint.painter, isNotNull);
-      expect(tester.takeException(), isNull);
-    });
-
-    for (final mode in [
-      NotificationRenderMode.standard,
-      NotificationRenderMode.experimentalLiquid,
-    ]) {
-      testWidgets('attachment geometry conforms to circular punch hole without horizontal ledge ($mode)', (
-        tester,
-      ) async {
+    testWidgets(
+      'DynamicNotifications does not paint negative screen coordinates when anchorTop is zero',
+      (tester) async {
+        final ctrl = DynamicNotificationController();
         const testGeometry = NotchGeometry(
-          bounds: Rect.fromLTWH(388, 8, 24, 24),
-          center: Offset(400, 20),
+          bounds: Rect.fromLTRB(188, 0, 212, 0),
+          center: Offset(200, 0),
           width: 24,
-          height: 24,
-          top: 8,
-          bottom: 32,
-          screenSize: Size(800, 600),
-          insets: EdgeInsets.only(top: 40),
-          source: NotchGeometrySource.displayFeature,
-          confidence: NotchGeometryConfidence.exact,
+          height: 0,
+          top: 0,
+          bottom: 0,
+          screenSize: Size(400, 800),
+          insets: EdgeInsets.zero,
+          source: NotchGeometrySource.none,
+          confidence: NotchGeometryConfidence.none,
           shape: NotchShape.punchHole,
           hasCutout: true,
-          devicePixelRatio: 2.0,
         );
 
-        final ctrl = DynamicNotificationController();
         await tester.pumpWidget(
           MaterialApp(
             home: DynamicNotifications(
               controller: ctrl,
               geometryOverride: testGeometry,
-              progressOverride: 0.15,
-              renderMode: mode,
-              child: const Scaffold(body: Center(child: Text('Punch Hole Test'))),
+              child: const Scaffold(body: Center(child: Text('Zero Anchor'))),
+            ),
+          ),
+        );
+
+        ctrl.show(
+          const DynamicNotification(title: 'Edge Screen', duration: null),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 80));
+
+        final customPaintFinder = find.byKey(
+          const ValueKey('dynamic-notification-shape'),
+        );
+        expect(customPaintFinder, findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets(
+      'NotchGeometryDetector.detect ignores cached Android geometry on iOS platform',
+      (tester) async {
+        final provider = AndroidCutoutGeometryProvider.instance;
+        const cachedGeo = NotchGeometry(
+          bounds: Rect.fromLTWH(188, 10, 24, 24),
+          center: Offset(200, 22),
+          width: 24,
+          height: 24,
+          top: 10,
+          bottom: 34,
+          screenSize: Size(400, 800),
+          insets: EdgeInsets.only(top: 34),
+          source: NotchGeometrySource.nativePath,
+          confidence: NotchGeometryConfidence.exact,
+          shape: NotchShape.punchHole,
+          hasCutout: true,
+        );
+
+        provider.cachedForTesting = cachedGeo;
+        addTearDown(() => provider.clear());
+
+        // Build context with iOS platform and safe area of 59pt (iPhone Dynamic Island)
+        late NotchGeometry detected;
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: ThemeData(platform: TargetPlatform.iOS),
+            home: MediaQuery(
+              data: const MediaQueryData(
+                size: Size(393, 852),
+                devicePixelRatio: 3.0,
+                padding: EdgeInsets.only(top: 59),
+              ),
+              child: Builder(
+                builder: (context) {
+                  detected = NotchGeometryDetector.detect(context);
+                  return const SizedBox();
+                },
+              ),
+            ),
+          ),
+        );
+
+        // Must detect iOS Dynamic Island profile, NOT the Android cached punch hole
+        expect(detected.source, NotchGeometrySource.profile);
+        expect(detected.shape, NotchShape.pill);
+        expect(detected.screenSize, const Size(393, 852));
+      },
+    );
+
+    testWidgets(
+      'NotchGeometryDetector.detect ignores cached Android geometry when screen size changes',
+      (tester) async {
+        final provider = AndroidCutoutGeometryProvider.instance;
+        const cachedGeo = NotchGeometry(
+          bounds: Rect.fromLTWH(188, 10, 24, 24),
+          center: Offset(200, 22),
+          width: 24,
+          height: 24,
+          top: 10,
+          bottom: 34,
+          screenSize: Size(400, 800),
+          insets: EdgeInsets.only(top: 34),
+          source: NotchGeometrySource.nativePath,
+          confidence: NotchGeometryConfidence.exact,
+          shape: NotchShape.punchHole,
+          hasCutout: true,
+        );
+
+        provider.cachedForTesting = cachedGeo;
+        addTearDown(() => provider.clear());
+
+        late NotchGeometry detectedLandscape;
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: ThemeData(platform: TargetPlatform.android),
+            home: MediaQuery(
+              data: const MediaQueryData(
+                size: Size(800, 400),
+                devicePixelRatio: 1.0,
+                padding: EdgeInsets.only(left: 34),
+              ),
+              child: Builder(
+                builder: (context) {
+                  detectedLandscape = NotchGeometryDetector.detect(context);
+                  return const SizedBox();
+                },
+              ),
+            ),
+          ),
+        );
+
+        // When size differs, it must not return the stale 400x800 portrait cache
+        expect(detectedLandscape.screenSize, const Size(800, 400));
+      },
+    );
+
+    test(
+      'AndroidCutoutGeometryProvider handles concurrent load requests safely',
+      () async {
+        final provider = AndroidCutoutGeometryProvider();
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(provider.channel, (call) async {
+              await Future<void>.delayed(const Duration(milliseconds: 50));
+              return <String, dynamic>{
+                'hasCutout': true,
+                'hasPath': true,
+                'pathLeft': 188.0,
+                'pathTop': 10.0,
+                'pathRight': 212.0,
+                'pathBottom': 34.0,
+              };
+            });
+
+        const mq = MediaQueryData(
+          size: Size(400, 800),
+          devicePixelRatio: 1.0,
+          viewPadding: EdgeInsets.only(top: 34),
+        );
+
+        // Trigger two concurrent load calls
+        final future1 = provider.load(mediaQuery: mq);
+        final future2 = provider.load(mediaQuery: mq);
+
+        final results = await Future.wait([future1, future2]);
+        expect(results[0], isNotNull);
+        expect(results[1], isNotNull);
+        expect(results[0], equals(results[1]));
+        expect(provider.cached, isNotNull);
+        provider.clear();
+      },
+    );
+
+    testWidgets(
+      'DynamicNotifications switches rendering mode and repaints correctly',
+      (tester) async {
+        final ctrl = DynamicNotificationController();
+        const testGeometry = NotchGeometry(
+          bounds: Rect.fromLTWH(188, 8, 24, 24),
+          center: Offset(200, 20),
+          width: 24,
+          height: 24,
+          top: 8,
+          bottom: 32,
+          screenSize: Size(400, 800),
+          insets: EdgeInsets.only(top: 32),
+          source: NotchGeometrySource.displayFeature,
+          confidence: NotchGeometryConfidence.exact,
+          shape: NotchShape.punchHole,
+          hasCutout: true,
+        );
+
+        // Build with standard mode at progress 0.3
+        await tester.pumpWidget(
+          MaterialApp(
+            home: DynamicNotifications(
+              controller: ctrl,
+              geometryOverride: testGeometry,
+              progressOverride: 0.3,
+              renderMode: NotificationRenderMode.standard,
+              child: const Scaffold(body: Center(child: Text('Content'))),
             ),
           ),
         );
         await tester.pump();
 
-        final overlay = find.byKey(const ValueKey('dynamic-notification-shape'));
-        final center = tester.getSize(overlay).width / 2;
+        var customPaint = tester.widget<CustomPaint>(
+          find.byKey(const ValueKey('dynamic-notification-shape')),
+        );
+        expect(customPaint.painter, isNotNull);
 
-        expect(
-          overlay,
-          paints
-            ..path(
+        // Update progress to 0.7
+        await tester.pumpWidget(
+          MaterialApp(
+            home: DynamicNotifications(
+              controller: ctrl,
+              geometryOverride: testGeometry,
+              progressOverride: 0.7,
+              renderMode: NotificationRenderMode.standard,
+              child: const Scaffold(body: Center(child: Text('Content'))),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        customPaint = tester.widget<CustomPaint>(
+          find.byKey(const ValueKey('dynamic-notification-shape')),
+        );
+        expect(customPaint.painter, isNotNull);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    for (final mode in [NotificationRenderMode.standard]) {
+      testWidgets(
+        'attachment geometry conforms to circular punch hole without horizontal ledge ($mode)',
+        (tester) async {
+          const testGeometry = NotchGeometry(
+            bounds: Rect.fromLTWH(388, 8, 24, 24),
+            center: Offset(400, 20),
+            width: 24,
+            height: 24,
+            top: 8,
+            bottom: 32,
+            screenSize: Size(800, 600),
+            insets: EdgeInsets.only(top: 40),
+            source: NotchGeometrySource.displayFeature,
+            confidence: NotchGeometryConfidence.exact,
+            shape: NotchShape.punchHole,
+            hasCutout: true,
+            devicePixelRatio: 2.0,
+          );
+
+          final ctrl = DynamicNotificationController();
+          await tester.pumpWidget(
+            MaterialApp(
+              home: DynamicNotifications(
+                controller: ctrl,
+                geometryOverride: testGeometry,
+                progressOverride: 0.15,
+                renderMode: mode,
+                child: const Scaffold(
+                  body: Center(child: Text('Punch Hole Test')),
+                ),
+              ),
+            ),
+          );
+          await tester.pump();
+
+          final overlay = find.byKey(
+            const ValueKey('dynamic-notification-shape'),
+          );
+          final center = tester.getSize(overlay).width / 2;
+
+          expect(
+            overlay,
+            paints..path(
               includes: [
                 Offset(center, 0.5), // Within overlap
                 Offset(center, -1.0), // Inside apex overlap
               ],
               excludes: [
                 Offset(center, -11.0), // Camera lens center is preserved
-                Offset(center + 14.0, -1.0), // No horizontal ledge outside aperture
-                Offset(center - 14.0, -1.0), // No horizontal ledge outside aperture
+                Offset(
+                  center + 14.0,
+                  -1.0,
+                ), // No horizontal ledge outside aperture
+                Offset(
+                  center - 14.0,
+                  -1.0,
+                ), // No horizontal ledge outside aperture
                 Offset(center + 24.0, 1.0), // Far lateral exclude
               ],
             ),
-        );
-      });
+          );
+        },
+      );
     }
 
     testWidgets('attachment geometry conforms to pill cutout without ledge', (
@@ -1522,81 +1583,21 @@ void main() {
 
       expect(
         overlay,
-        paints
-          ..path(
-            includes: [
-              Offset(center, -1.0), // Overlaps into pill bottom rim
-            ],
-            excludes: [
-              Offset(center, -18.0), // Center of pill is preserved
-              Offset(center + 70.0, -1.0), // Outside pill bounds
-            ],
-          ),
-      );
-    });
-
-    testWidgets('originLift preserves overlap depth and adheres to aperture boundary', (
-      tester,
-    ) async {
-      const testGeometry = NotchGeometry(
-        bounds: Rect.fromLTWH(388, 8, 24, 24),
-        center: Offset(400, 20),
-        width: 24,
-        height: 24,
-        top: 8,
-        bottom: 32,
-        screenSize: Size(800, 600),
-        insets: EdgeInsets.only(top: 40),
-        source: NotchGeometrySource.displayFeature,
-        confidence: NotchGeometryConfidence.exact,
-        shape: NotchShape.punchHole,
-        hasCutout: true,
-        devicePixelRatio: 2.0,
-      );
-
-      final ctrl = DynamicNotificationController();
-      // originLift = 8.0 lifts anchorTop from 31 to 23
-      // cutoutBottomLocal = 32 - 23 = 9.0; yApex = 9.0 - 2.2 = 6.8; lens center is at -3.0
-      await tester.pumpWidget(
-        MaterialApp(
-          home: DynamicNotifications(
-            controller: ctrl,
-            geometryOverride: testGeometry,
-            originLift: 8.0,
-            progressOverride: 0.15,
-            renderMode: NotificationRenderMode.standard,
-            child: const Scaffold(body: Center(child: Text('Lift Test'))),
-          ),
+        paints..path(
+          includes: [
+            Offset(center, -1.0), // Overlaps into pill bottom rim
+          ],
+          excludes: [
+            Offset(center, -18.0), // Center of pill is preserved
+            Offset(center + 70.0, -1.0), // Outside pill bounds
+          ],
         ),
       );
-      await tester.pump();
-
-      final overlay = find.byKey(const ValueKey('dynamic-notification-shape'));
-      final center = tester.getSize(overlay).width / 2;
-
-      expect(
-        overlay,
-        paints
-          ..path(
-            includes: [
-              Offset(center, 7.5), // Within overlap
-              Offset(center, 7.0), // Inside apex overlap
-            ],
-            excludes: [
-              Offset(center, -3.0), // Camera lens center (Y = -3.0) is preserved
-              Offset(center + 14.0, 7.0), // No horizontal ledge outside aperture
-            ],
-          ),
-      );
     });
 
-    for (final mode in [
-      NotificationRenderMode.standard,
-      NotificationRenderMode.experimentalLiquid,
-    ]) {
-      testWidgets('attachment geometry maintains tangent continuity without bulging at intermediate progress (0.20, 0.30) ($mode)', (
-        tester,
-      ) async {
+    testWidgets(
+      'originLift preserves overlap depth and adheres to aperture boundary',
+      (tester) async {
         const testGeometry = NotchGeometry(
           bounds: Rect.fromLTWH(388, 8, 24, 24),
           center: Offset(400, 20),
@@ -1613,54 +1614,259 @@ void main() {
           devicePixelRatio: 2.0,
         );
 
-        for (final p in [0.20, 0.30]) {
-          final ctrl = DynamicNotificationController();
+        final ctrl = DynamicNotificationController();
+        // originLift = 8.0 lifts anchorTop from 31 to 23
+        // cutoutBottomLocal = 32 - 23 = 9.0; yApex = 9.0 - 2.2 = 6.8; lens center is at -3.0
+        await tester.pumpWidget(
+          MaterialApp(
+            home: DynamicNotifications(
+              controller: ctrl,
+              geometryOverride: testGeometry,
+              originLift: 8.0,
+              progressOverride: 0.15,
+              renderMode: NotificationRenderMode.standard,
+              child: const Scaffold(body: Center(child: Text('Lift Test'))),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        final overlay = find.byKey(
+          const ValueKey('dynamic-notification-shape'),
+        );
+        final center = tester.getSize(overlay).width / 2;
+
+        expect(
+          overlay,
+          paints..path(
+            includes: [
+              Offset(center, 7.5), // Within overlap
+              Offset(center, 7.0), // Inside apex overlap
+            ],
+            excludes: [
+              Offset(
+                center,
+                -3.0,
+              ), // Camera lens center (Y = -3.0) is preserved
+              Offset(
+                center + 14.0,
+                7.0,
+              ), // No horizontal ledge outside aperture
+            ],
+          ),
+        );
+      },
+    );
+
+    for (final mode in [NotificationRenderMode.standard]) {
+      testWidgets(
+        'attachment geometry maintains tangent continuity without bulging at intermediate progress (0.20, 0.30) ($mode)',
+        (tester) async {
+          const testGeometry = NotchGeometry(
+            bounds: Rect.fromLTWH(388, 8, 24, 24),
+            center: Offset(400, 20),
+            width: 24,
+            height: 24,
+            top: 8,
+            bottom: 32,
+            screenSize: Size(800, 600),
+            insets: EdgeInsets.only(top: 40),
+            source: NotchGeometrySource.displayFeature,
+            confidence: NotchGeometryConfidence.exact,
+            shape: NotchShape.punchHole,
+            hasCutout: true,
+            devicePixelRatio: 2.0,
+          );
+
+          for (final p in [0.20, 0.30]) {
+            final ctrl = DynamicNotificationController();
+            await tester.pumpWidget(
+              MaterialApp(
+                home: DynamicNotifications(
+                  controller: ctrl,
+                  geometryOverride: testGeometry,
+                  progressOverride: p,
+                  renderMode: mode,
+                  child: const Scaffold(
+                    body: Center(child: Text('Bulge Test')),
+                  ),
+                ),
+              ),
+            );
+            await tester.pump();
+
+            final overlay = find.byKey(
+              const ValueKey('dynamic-notification-shape'),
+            );
+            final center = tester.getSize(overlay).width / 2;
+
+            // In standard mode at p=0.30, neck has smoothly pinched off so it shouldn't contain top points
+            if (mode == NotificationRenderMode.standard && p == 0.30) {
+              expect(
+                overlay,
+                paints..path(
+                  excludes: [Offset(center, -1.0), Offset(center, -11.0)],
+                ),
+              );
+            } else {
+              expect(
+                overlay,
+                paints..path(
+                  includes: [
+                    Offset(center, -1.0), // Overlap maintained
+                  ],
+                  excludes: [
+                    Offset(center, -11.0), // Lens center clear
+                    Offset(
+                      center + 14.0,
+                      -1.0,
+                    ), // No lateral shelf outside aperture
+                    Offset(
+                      center - 14.0,
+                      -1.0,
+                    ), // No lateral shelf outside aperture
+                  ],
+                ),
+              );
+            }
+          }
+        },
+      );
+    }
+
+    testWidgets(
+      'Dynamic Island detachment renders airborne droplet and aperture meniscus at progress 0.30',
+      (tester) async {
+        const pillGeometry = NotchGeometry(
+          bounds: Rect.fromLTWH(338, 11, 124, 37),
+          center: Offset(400, 29.5),
+          width: 124,
+          height: 37,
+          top: 11,
+          bottom: 48,
+          screenSize: Size(800, 600),
+          insets: EdgeInsets.only(top: 54),
+          source: NotchGeometrySource.displayFeature,
+          confidence: NotchGeometryConfidence.exact,
+          shape: NotchShape.pill,
+          hasCutout: true,
+        );
+
+        final ctrl = DynamicNotificationController();
+        await tester.pumpWidget(
+          MaterialApp(
+            home: DynamicNotifications(
+              controller: ctrl,
+              geometryOverride: pillGeometry,
+              progressOverride: 0.30,
+              child: const Scaffold(body: Center(child: Text('Meniscus Test'))),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        final overlay = find.byKey(
+          const ValueKey('dynamic-notification-shape'),
+        );
+        final center = tester.getSize(overlay).width / 2;
+
+        // At p=0.30, the droplet is airborne (detached), and a small meniscus tip is rendered at the island
+        expect(
+          overlay,
+          paints
+            ..shadow()
+            ..path(excludes: [Offset(center, 0.0), Offset(center, 10.0)])
+            ..path(
+              includes: [Offset(center, 0.0)],
+              excludes: [
+                Offset(center + 30.0, 0.0),
+                Offset(center - 30.0, 0.0),
+              ],
+            ),
+        );
+      },
+    );
+
+    testWidgets(
+      'droplet morphology transitions seamlessly across entrance keyframes and handles interruption',
+      (tester) async {
+        final ctrl = DynamicNotificationController();
+        const testGeometry = NotchGeometry(
+          bounds: Rect.fromLTWH(188, 8, 24, 24),
+          center: Offset(200, 20),
+          width: 24,
+          height: 24,
+          top: 8,
+          bottom: 32,
+          screenSize: Size(400, 800),
+          insets: EdgeInsets.only(top: 36),
+          source: NotchGeometrySource.displayFeature,
+          confidence: NotchGeometryConfidence.exact,
+          shape: NotchShape.punchHole,
+          hasCutout: true,
+        );
+
+        // Verify each entrance phase with progressOverride
+        for (final p in [0.05, 0.15, 0.25, 0.35, 0.50, 0.75, 1.0]) {
           await tester.pumpWidget(
             MaterialApp(
               home: DynamicNotifications(
                 controller: ctrl,
                 geometryOverride: testGeometry,
                 progressOverride: p,
-                renderMode: mode,
-                child: const Scaffold(body: Center(child: Text('Bulge Test'))),
+                child: const Scaffold(body: Center(child: Text('Phase Test'))),
               ),
             ),
           );
           await tester.pump();
-
-          final overlay = find.byKey(const ValueKey('dynamic-notification-shape'));
-          final center = tester.getSize(overlay).width / 2;
-
-          // In standard mode at p=0.30, neck has smoothly pinched off so it shouldn't contain top points
-          if (mode == NotificationRenderMode.standard && p == 0.30) {
-            expect(
-              overlay,
-              paints
-                ..path(
-                  excludes: [
-                    Offset(center, -1.0),
-                    Offset(center, -11.0),
-                  ],
-                ),
-            );
-          } else {
-            expect(
-              overlay,
-              paints
-                ..path(
-                  includes: [
-                    Offset(center, -1.0), // Overlap maintained
-                  ],
-                  excludes: [
-                    Offset(center, -11.0), // Lens center clear
-                    Offset(center + 14.0, -1.0), // No lateral shelf outside aperture
-                    Offset(center - 14.0, -1.0), // No lateral shelf outside aperture
-                  ],
-                ),
-            );
-          }
+          expect(
+            find.byKey(const ValueKey('dynamic-notification-shape')),
+            findsOneWidget,
+          );
+          expect(tester.takeException(), isNull);
         }
-      });
-    }
+
+        // Test interruption: showing notification B while A is exiting
+        final liveCtrl = DynamicNotificationController();
+        await tester.pumpWidget(
+          MaterialApp(
+            home: DynamicNotifications(
+              key: const ValueKey('interruption-host'),
+              controller: liveCtrl,
+              geometryOverride: testGeometry,
+              child: const Scaffold(
+                body: Center(child: Text('Interruption Host')),
+              ),
+            ),
+          ),
+        );
+        liveCtrl.show(
+          const DynamicNotification(
+            title: 'First Notification',
+            duration: null,
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(find.text('First Notification'), findsOneWidget);
+
+        // Trigger exit
+        liveCtrl.dismiss();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 150));
+
+        // Interrupt during exit with second notification
+        liveCtrl.show(
+          const DynamicNotification(
+            title: 'Second Notification',
+            duration: null,
+          ),
+        );
+        await tester.pump();
+        await tester.pumpAndSettle();
+        expect(find.text('Second Notification').hitTestable(), findsOneWidget);
+        expect(find.text('First Notification'), findsNothing);
+      },
+    );
   });
 }

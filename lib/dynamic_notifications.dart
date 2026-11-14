@@ -76,19 +76,15 @@ class DynamicNotificationController {
   }
 }
 
-const _fall = Interval(0.02, 0.51, curve: Curves.easeOutCubic);
-const _expand = Interval(0.40, 0.78, curve: Curves.easeInOutCubic);
-const _reveal = Interval(0.66, 0.96, curve: Curves.easeInOutCubic);
-const _tint = Interval(0.15, 0.43, curve: Curves.easeInOutCubic);
+const _fall = Interval(0.02, 0.46, curve: Curves.easeInOutQuad);
+const _expand = Interval(0.46, 0.82, curve: Curves.easeInOutCubic);
+const _reveal = Interval(0.64, 0.96, curve: Curves.easeOutCubic);
+const _tint = Interval(0.15, 0.40, curve: Curves.easeInOutCubic);
 
 /// Rendering engine used to animate the notification entrance and fluid silhouette.
 enum NotificationRenderMode {
   /// Verified fluid morphology renderer (standard physics-based pendant drop).
   standard,
-
-  /// Experimental liquid renderer incorporating continuous waist-and-shoulder
-  /// silhouette bridge dynamics and asymmetric absorption sweep from liquid_notch.
-  experimentalLiquid,
 }
 
 /// Places a notification above [child] without blocking touches outside it.
@@ -366,7 +362,9 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
         final landing = math.max(
           0.0,
           safeOffset +
-              (compact || constraints.maxHeight - safeOffset < 180 ? 0.0 : 22.0),
+              (compact || constraints.maxHeight - safeOffset < 180
+                  ? 0.0
+                  : 22.0),
         );
         return AnimatedBuilder(
           animation: _animation,
@@ -559,18 +557,48 @@ class _NotificationPainter extends CustomPainter {
     final fall = _fall.transform(progress);
     final expand = compact ? 1.0 : _expand.transform(progress);
     final grow = const Interval(
-      0,
-      0.32,
+      0.0,
+      0.24,
       curve: Curves.easeOutCubic,
     ).transform(progress);
-    final stretch = 1 + 0.22 * math.sin(math.pi * fall);
-    final dropSize = math.min(46.0, math.min(size.width, cardHeight)) * grow;
+
+    final double eggFactor;
+    if (compact || isExiting || progress > 0.44) {
+      eggFactor = 0.0;
+    } else if (progress <= 0.28) {
+      eggFactor = const Interval(
+        0.08,
+        0.24,
+        curve: Curves.easeInOut,
+      ).transform(progress);
+    } else {
+      // Relaxation from egg to circle after detachment
+      eggFactor =
+          1.0 -
+          const Interval(
+            0.28,
+            0.44,
+            curve: Curves.easeInOut,
+          ).transform(progress);
+    }
+    final effectiveEgg = eggFactor * (1.0 - expand);
+
+    final stretch =
+        1.0 +
+        0.28 *
+            (1.0 - expand) *
+            math.sin(
+              math.pi * (progress / (isExiting ? 0.42 : 0.36)).clamp(0.0, 1.0),
+            );
+    final dropSize =
+        math.min(48.0, math.min(size.width, cardHeight)) *
+        (compact ? 1.0 : (0.32 + 0.68 * grow));
     final width = lerpDouble(dropSize / stretch, size.width, expand)!;
     final height = lerpDouble(dropSize * stretch, cardHeight, expand)!;
     final centerY = compact
         ? cardHeight / 2
         : lerpDouble(-12, landing + cardHeight / 2, fall)! + drag;
-    final centerX = size.width / 2 + anchorOffset * (1 - expand);
+    final centerX = size.width / 2 + anchorOffset * (1.0 - expand);
     final rect = Rect.fromCenter(
       center: Offset(centerX, centerY),
       width: width,
@@ -578,83 +606,28 @@ class _NotificationPainter extends CustomPainter {
     );
 
     final radius = math.min(width, height) / 2;
-    final corner = lerpDouble(
-      radius,
-      math.min(borderRadius ?? radius, radius),
-      expand,
-    )!;
-    final topCorner = lerpDouble(width / 2, corner, expand)!;
-    final topTangent = lerpDouble(0.33, 0.5523, expand)!;
-    final shoulderY = lerpDouble(
-      rect.top + height * 0.61,
-      rect.top + corner,
-      expand,
-    )!;
-    var path = Path()
-      ..moveTo(rect.left + topCorner, rect.top)
-      ..lineTo(rect.right - topCorner, rect.top)
-      ..cubicTo(
-        rect.right - topCorner * (1 - topTangent),
-        rect.top,
-        rect.right,
-        lerpDouble(rect.top, shoulderY, 0.45)!,
-        rect.right,
-        shoulderY,
-      )
-      ..lineTo(rect.right, math.max(shoulderY, rect.bottom - corner))
-      ..cubicTo(
-        rect.right,
-        rect.bottom - corner * 0.4477,
-        rect.right - corner * 0.4477,
-        rect.bottom,
-        rect.right - corner,
-        rect.bottom,
-      )
-      ..lineTo(rect.left + corner, rect.bottom)
-      ..cubicTo(
-        rect.left + corner * 0.4477,
-        rect.bottom,
-        rect.left,
-        rect.bottom - corner * 0.4477,
-        rect.left,
-        math.max(shoulderY, rect.bottom - corner),
-      )
-      ..lineTo(rect.left, shoulderY)
-      ..cubicTo(
-        rect.left,
-        lerpDouble(rect.top, shoulderY, 0.45)!,
-        rect.left + topCorner * (1 - topTangent),
-        rect.top,
-        rect.left + topCorner,
-        rect.top,
-      )
-      ..close();
+    final cardCorner = math.min(
+      borderRadius ?? (cardHeight / 2),
+      cardHeight / 2,
+    );
+    final corner = lerpDouble(radius, cardCorner, expand)!;
+    final topFlat = math.max(0.0, width / 2 - corner);
+    final botFlat = math.max(0.0, width / 2 - corner);
 
     final tint = compact ? 1.0 : _tint.transform(progress);
     final bodyColor = Color.lerp(Colors.black, surface, tint)!;
     final paint = Paint()..color = bodyColor;
-    final neckOpacity =
-        1 -
-        const Interval(0.18, 0.28, curve: Curves.easeInOut).transform(progress);
     final hasCutout = geometry?.hasCutout ?? false;
     final isPunchHole = hasCutout && geometry?.shape == NotchShape.punchHole;
     final isPill = hasCutout && geometry?.shape == NotchShape.pill;
 
-    // Overlap slightly into the hardware cutout/safe area to eliminate
-    // subpixel anti-aliasing seams and active display gap artifacts.
-    // Clamp upward overlap to the available screen anchor so painter coordinates
-    // never paint above the FlutterView boundary (Y_screen < 0).
-    final dpr = (geometry?.devicePixelRatio != null && geometry!.devicePixelRatio > 0)
+    final dpr =
+        (geometry?.devicePixelRatio != null && geometry!.devicePixelRatio > 0)
         ? geometry!.devicePixelRatio
         : 1.0;
-    // Overlap depth: at least 2.2dp to eliminate subpixel anti-aliasing gaps and
-    // ensure continuous attachment with the physical aperture contour.
     final targetOverlap = math.max(2.2, (2.2 * dpr).round() / dpr);
 
-    // Cutout vertical metrics in local painter coordinates (local y = 0 at anchorTop)
-    final cutoutBottomLocal = hasCutout
-        ? (geometry!.bottom - anchorTop)
-        : 0.0;
+    final cutoutBottomLocal = hasCutout ? (geometry!.bottom - anchorTop) : 0.0;
     final cutoutCenterYLocal = hasCutout
         ? (geometry!.center.dy - anchorTop)
         : 0.0;
@@ -666,7 +639,6 @@ class _NotificationPainter extends CustomPainter {
         : cutoutRadiusX;
     final cutoutRadius = math.min(cutoutRadiusX, cutoutRadiusY);
 
-    // Safe overlap limit: stays on screen (Y_screen >= 0) and preserves camera lens
     final maxSafeOverlap = hasCutout
         ? math.min(geometry!.bottom, cutoutRadiusY * 0.45)
         : 0.0;
@@ -674,347 +646,431 @@ class _NotificationPainter extends CustomPainter {
         ? math.min(targetOverlap, math.max(0.0, maxSafeOverlap))
         : 0.0;
 
-    // Apex: lowest boundary point of the cutout offset upward by deltaOverlap
     final yApex = cutoutBottomLocal - deltaOverlap;
 
     double? tailLeft;
     double? tailRight;
     double? tailTopY;
 
-    if (renderMode == NotificationRenderMode.standard) {
-      if (!compact && rect.bottom > 0 && neckOpacity > 0) {
-        final join = math.max(0.0, centerY + height * 0.12);
-        final neckSpan = width / 2;
+    final cutoutHalfWidth = (geometry?.width != null && geometry!.width > 0)
+        ? geometry!.width / 2
+        : 16.0;
+    final maxContactRadius = isPunchHole
+        ? math.min(14.0, math.max(8.0, cutoutRadius * 0.88))
+        : (isPill
+              ? math.min(52.0, math.max(28.0, cutoutHalfWidth * 0.78))
+              : math.min(48.0, math.max(16.0, cutoutHalfWidth * 0.78)));
 
-        // Contact half-width at the aperture is bounded by physical cutout dimensions
-        final cutoutHalfWidth = (geometry?.width != null && geometry!.width > 0)
-            ? geometry!.width / 2
-            : 16.0;
-        final maxContactRadius = isPunchHole
-            ? math.min(14.0, math.max(8.0, cutoutRadius * 0.88))
-            : math.min(20.0, math.max(12.0, cutoutHalfWidth));
+    Path path;
 
-        final rTop = math.min(neckSpan * 0.95, maxContactRadius) * neckOpacity;
+    final isAttachedEntrance = !compact && !isExiting && progress <= 0.28;
+    if (isAttachedEntrance) {
+      final u = (progress / 0.28).clamp(0.0, 1.0);
+      final shoulder =
+          maxContactRadius *
+          lerpDouble(0.96, 0.65, Curves.easeInOut.transform(u))!;
 
-        // Calculate aperture contact Y and tangent angles following the lower contour
-        double yContact = yApex;
-        double contourRise = 0.0;
-        double contactCos = 0.0;
-        double contactSin = 1.0;
-        if (hasCutout && rTop > 0) {
-          if (isPunchHole) {
-            final rClamped = math.min(rTop, cutoutRadius * 0.92);
-            final cosAlpha = math.sqrt(math.max(0.0, cutoutRadius * cutoutRadius - rClamped * rClamped)) / cutoutRadius;
-            final sinAlpha = rClamped / cutoutRadius;
+      // Calculate aperture contact Y and tangent angles following the lower contour
+      double yContact = yApex;
+      double contourRise = 0.0;
+      double contactCos = 0.0;
+      double contactSin = 1.0;
+      if (hasCutout && shoulder > 0) {
+        if (isPunchHole) {
+          final rClamped = math.min(shoulder, cutoutRadius * 0.92);
+          final cosAlpha =
+              math.sqrt(
+                math.max(
+                  0.0,
+                  cutoutRadius * cutoutRadius - rClamped * rClamped,
+                ),
+              ) /
+              cutoutRadius;
+          final sinAlpha = rClamped / cutoutRadius;
+          final yRim = cutoutCenterYLocal + cutoutRadius * cosAlpha;
+          yContact = yRim - deltaOverlap;
+          contourRise = math.max(0.0, yApex - yContact);
+          contactCos = cosAlpha;
+          contactSin = sinAlpha;
+        } else if (isPill) {
+          final flatHalf = math.max(
+            0.0,
+            (geometry!.width - geometry!.height) / 2,
+          );
+          if (shoulder > flatHalf) {
+            final dx = math.min(cutoutRadius * 0.92, shoulder - flatHalf);
+            final cosAlpha =
+                math.sqrt(
+                  math.max(0.0, cutoutRadius * cutoutRadius - dx * dx),
+                ) /
+                cutoutRadius;
+            final sinAlpha = dx / cutoutRadius;
             final yRim = cutoutCenterYLocal + cutoutRadius * cosAlpha;
             yContact = yRim - deltaOverlap;
             contourRise = math.max(0.0, yApex - yContact);
             contactCos = cosAlpha;
             contactSin = sinAlpha;
-          } else if (isPill) {
-            final flatHalf = math.max(0.0, (geometry!.width - geometry!.height) / 2);
-            if (rTop > flatHalf) {
-              final dx = math.min(cutoutRadius * 0.92, rTop - flatHalf);
-              final cosAlpha = math.sqrt(math.max(0.0, cutoutRadius * cutoutRadius - dx * dx)) / cutoutRadius;
-              final sinAlpha = dx / cutoutRadius;
-              final yRim = cutoutCenterYLocal + cutoutRadius * cosAlpha;
-              yContact = yRim - deltaOverlap;
-              contourRise = math.max(0.0, yApex - yContact);
-              contactCos = cosAlpha;
-              contactSin = sinAlpha;
-            }
           }
-        }
-
-        // Clamp yContact to not exceed negative screen boundary
-        yContact = math.max(-anchorTop, yContact);
-        final hNeck = math.max(0.0, join - yContact);
-
-        if (rTop > 0 && hNeck > 0) {
-          tailLeft = centerX - rTop;
-          tailRight = centerX + rTop;
-          tailTopY = yContact;
-
-          // Waist position and pinched radius under gravity tension
-          final yWaist = yApex + math.max(1.5, (join - yApex) * 0.40);
-          final pinchFactor = 0.42 + 0.38 * (1.0 - fall);
-          final rWaist = rTop * pinchFactor;
-
-          // Merge radius at the junction with the drop body
-          final rJoin =
-              math.min(neckSpan * 0.88, rTop + (neckSpan - rTop) * 0.45);
-
-          final tail = Path();
-          // Start at top-left contact point
-          tail.moveTo(centerX - rTop, yContact);
-
-          // Top transition: smooth continuous Bézier following lower contour of camera aperture
-          if (contourRise > 0.001) {
-            final cpY = yApex + contourRise / 3.0;
-            final cx = contactCos > 0.05
-                ? math.min(rTop * 0.65, math.max(rTop * 0.35, (4.0 / 3.0) * contourRise * (cutoutRadius * contactCos) / math.max(1.0, rTop)))
-                : rTop * 0.5;
-            tail.cubicTo(
-              centerX - rTop + cx,
-              cpY,
-              centerX + rTop - cx,
-              cpY,
-              centerX + rTop,
-              yContact,
-            );
-          } else {
-            tail.lineTo(centerX + rTop, yContact);
-          }
-
-          final h = math.max(1.0, yWaist - yContact);
-          final w = math.max(0.1, rTop - rWaist);
-          final double cp1x;
-          final double cp1y;
-          final double cp2x;
-          final double cp2y;
-
-          if (contactCos > 0.05) {
-            final maxL1 = math.min(w / contactCos * 0.45, h / contactSin * 0.35);
-            final l1 = math.max(1.0, maxL1);
-            cp1x = centerX + rTop - l1 * contactCos;
-            cp1y = yContact + l1 * contactSin;
-            cp2x = centerX + rWaist + w * 0.06;
-            cp2y = yWaist - math.min(4.0, h * 0.28);
-          } else {
-            cp1x = centerX + rTop - w * 0.15;
-            cp1y = yContact + h * 0.38;
-            cp2x = centerX + rWaist + w * 0.08;
-            cp2y = yWaist - math.min(4.0, h * 0.30);
-          }
-
-          // Right flank: smooth tangent transition from aperture contact down to waist
-          tail.cubicTo(
-            cp1x,
-            cp1y,
-            cp2x,
-            cp2y,
-            centerX + rWaist,
-            yWaist,
-          );
-          tail.cubicTo(
-            centerX + rWaist,
-            yWaist + (join - yWaist) * 0.35,
-            centerX + rJoin * 0.90,
-            join - (join - yWaist) * 0.35,
-            centerX + rJoin,
-            join,
-          );
-
-          // Bottom connection inside the drop body
-          tail.lineTo(centerX - rJoin, join);
-
-          // Left flank: from body join up to waist, then to top-left contact with mirror symmetry
-          tail.cubicTo(
-            centerX - rJoin * 0.90,
-            join - (join - yWaist) * 0.35,
-            centerX - rWaist,
-            yWaist + (join - yWaist) * 0.35,
-            centerX - rWaist,
-            yWaist,
-          );
-          tail.cubicTo(
-            2 * centerX - cp2x,
-            cp2y,
-            2 * centerX - cp1x,
-            cp1y,
-            centerX - rTop,
-            yContact,
-          );
-
-          tail.close();
-          path = Path.combine(PathOperation.union, path, tail);
-
-          // Keep the attachment dark while the body lightens away from the edge.
-          paint.shader = LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color.lerp(bodyColor, Colors.black, math.max(0.65, neckOpacity))!,
-              bodyColor,
-            ],
-          ).createShader(
-            Rect.fromLTRB(0, yContact, 1, math.max(join, 1)),
-          );
         }
       }
+      yContact = math.max(-anchorTop, yContact);
+
+      // Droplet vertical extent
+      final yBottom =
+          yApex +
+          lerpDouble(
+            22.0,
+            math.max(rect.bottom - yApex, 78.0),
+            Curves.easeInOutQuad.transform(u),
+          )!;
+
+      // Pinch waist: smoothly narrows from wide funnel to pinched waist
+      final pinch = math.pow(u, 2.0);
+      final waist = shoulder * (0.45 - 0.28 * pinch);
+      final waistY =
+          yContact + (yBottom - yContact) * lerpDouble(0.48, 0.36, u)!;
+
+      // Bulb width: rounded bulb forming at the bottom
+      final wBulb =
+          lerpDouble(
+            10.0,
+            math.max(width / 2, 24.5),
+            Curves.easeInOutCubic.transform(u),
+          )!;
+      final bulbY =
+          yContact + (yBottom - yContact) * lerpDouble(0.76, 0.68, u)!;
+
+      tailLeft = centerX - shoulder;
+      tailRight = centerX + shoulder;
+      tailTopY = yContact;
+
+      path = Path()..moveTo(centerX - shoulder, yContact);
+
+      if (contourRise > 0.001) {
+        final cpY = yApex + contourRise / 3.0;
+        final cx = contactCos > 0.05
+            ? math.min(
+                shoulder * 0.65,
+                math.max(
+                  shoulder * 0.35,
+                  (4.0 / 3.0) *
+                      contourRise *
+                      (cutoutRadius * contactCos) /
+                      math.max(1.0, shoulder),
+                ),
+              )
+            : shoulder * 0.5;
+        path.cubicTo(
+          centerX - shoulder + cx,
+          cpY,
+          centerX + shoulder - cx,
+          cpY,
+          centerX + shoulder,
+          yContact,
+        );
+      } else {
+        path.lineTo(centerX + shoulder, yContact);
+      }
+
+      final hFlank = math.max(1.0, waistY - yContact);
+      final wFlank = math.max(0.1, shoulder - waist);
+      final double cp1x, cp1y, cp2x, cp2y;
+      if (contactCos > 0.05) {
+        final maxL1 = math.min(
+          wFlank / contactCos * 0.45,
+          hFlank / contactSin * 0.35,
+        );
+        final l1 = math.max(1.0, maxL1);
+        cp1x = centerX + shoulder - l1 * contactCos;
+        cp1y = yContact + l1 * contactSin;
+        cp2x = centerX + waist + wFlank * 0.05;
+        cp2y = waistY - math.min(6.0, hFlank * 0.30);
+      } else {
+        cp1x = centerX + shoulder - wFlank * 0.22;
+        cp1y = yContact + hFlank * 0.38;
+        cp2x = centerX + waist + wFlank * 0.06;
+        cp2y = waistY - math.min(6.0, hFlank * 0.30);
+      }
+
+      // 1. Right flank: concave cubic from (centerX + shoulder, yContact) to (centerX + waist, waistY)
+      path.cubicTo(cp1x, cp1y, cp2x, cp2y, centerX + waist, waistY);
+
+      // 2. Right waist to bulb: outward cubic from (centerX + waist, waistY) to (centerX + wBulb, bulbY)
+      final hWaistBulb = math.max(1.0, bulbY - waistY);
+      path.cubicTo(
+        centerX + waist,
+        waistY + hWaistBulb * 0.40,
+        centerX + wBulb,
+        bulbY - hWaistBulb * 0.35,
+        centerX + wBulb,
+        bulbY,
+      );
+
+      // 3. Bulb bottom: from (centerX + wBulb, bulbY) around (centerX, yBottom) to (centerX - wBulb, bulbY)
+      final hBulbBot = math.max(1.0, yBottom - bulbY);
+      path.cubicTo(
+        centerX + wBulb,
+        bulbY + hBulbBot * 0.5523,
+        centerX + wBulb * 0.5523,
+        yBottom,
+        centerX,
+        yBottom,
+      );
+      path.cubicTo(
+        centerX - wBulb * 0.5523,
+        yBottom,
+        centerX - wBulb,
+        bulbY + hBulbBot * 0.5523,
+        centerX - wBulb,
+        bulbY,
+      );
+
+      // 4. Left bulb to waist: from (centerX - wBulb, bulbY) to (centerX - waist, waistY)
+      path.cubicTo(
+        centerX - wBulb,
+        bulbY - hWaistBulb * 0.35,
+        centerX - waist,
+        waistY + hWaistBulb * 0.40,
+        centerX - waist,
+        waistY,
+      );
+
+      // 5. Left flank: concave cubic from (centerX - waist, waistY) to (centerX - shoulder, yContact)
+      path.cubicTo(
+        2 * centerX - cp2x,
+        cp2y,
+        2 * centerX - cp1x,
+        cp1y,
+        centerX - shoulder,
+        yContact,
+      );
+      path.close();
+
+      if (surface != Colors.black) {
+        paint.shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.black,
+            Color.lerp(Colors.black, surface, 0.35)!,
+            Color.lerp(Colors.black, surface, 0.85)!,
+            surface,
+          ],
+          stops: const [0.0, 0.30, 0.70, 1.0],
+        ).createShader(
+          Rect.fromLTRB(0, yContact, 1, math.max(yBottom, yContact + 1.0)),
+        );
+      }
     } else {
-      // Experimental Liquid Renderer (inspired by liquid_notch silhouette bridge & absorption sweep)
-      final cutoutHalfWidth = (geometry?.width != null && geometry!.width > 0)
-          ? geometry!.width / 2
-          : 16.0;
-      final maxContactRadius = isPunchHole
-          ? math.min(14.0, math.max(8.0, cutoutRadius * 0.88))
-          : math.min(22.0, math.max(12.0, cutoutHalfWidth));
+      final bulbY = rect.top + height * (0.50 + 0.14 * effectiveEgg);
+      final wBulb = width / 2;
 
-      final bool showBridge;
-      final double bridgeOpacity;
-      final double shoulder;
-      final double waist;
-      final double attach;
-      final double join = math.max(0.0, centerY + height * 0.16);
+      path = Path();
+      if (topFlat > 0) {
+        // Expanded card with flat top and bottom edges
+        path
+          ..moveTo(centerX - topFlat, rect.top)
+          ..lineTo(centerX + topFlat, rect.top)
+          ..cubicTo(
+            centerX + topFlat + (wBulb - topFlat) * 0.5523,
+            rect.top,
+            centerX + wBulb,
+            bulbY - (bulbY - rect.top) * 0.5523,
+            centerX + wBulb,
+            bulbY,
+          )
+          ..cubicTo(
+            centerX + wBulb,
+            bulbY + (rect.bottom - bulbY) * 0.5523,
+            centerX + botFlat + (wBulb - botFlat) * 0.5523,
+            rect.bottom,
+            centerX + botFlat,
+            rect.bottom,
+          )
+          ..lineTo(centerX - botFlat, rect.bottom)
+          ..cubicTo(
+            centerX - botFlat - (wBulb - botFlat) * 0.5523,
+            rect.bottom,
+            centerX - wBulb,
+            bulbY + (rect.bottom - bulbY) * 0.5523,
+            centerX - wBulb,
+            bulbY,
+          )
+          ..cubicTo(
+            centerX - wBulb,
+            bulbY - (bulbY - rect.top) * 0.5523,
+            centerX - topFlat - (wBulb - topFlat) * 0.5523,
+            rect.top,
+            centerX - topFlat,
+            rect.top,
+          )
+          ..close();
+      } else {
+        // Airborne droplet: morphs from pointed teardrop (effectiveEgg = 1.0)
+        // to circular disc (effectiveEgg = 0.0)
+        final kX = lerpDouble(0.5523, 0.0, effectiveEgg)!;
+        final kYTop = lerpDouble(0.0, 0.35, effectiveEgg)!;
+        final kYBulb = lerpDouble(0.5523, 0.40, effectiveEgg)!;
 
-      if (!compact && rect.bottom > 0) {
-        if (!isExiting && progress <= 0.44) {
-          showBridge = true;
-          final bridgeFactor = (1.0 - (progress / 0.44)).clamp(0.0, 1.0);
-          bridgeOpacity = Curves.easeIn.transform(bridgeFactor);
-          // Shoulder tapers from aperture contact to a tight neck
-          shoulder = math.min(maxContactRadius, 24.0) * (0.35 + 0.65 * bridgeFactor);
-          // Waist pinches down under gravity tension and collapses cleanly to 0 at pinch-off
-          final pinchFactor = Curves.easeInCubic.transform(bridgeFactor);
-          waist = shoulder * 0.48 * pinchFactor;
-          attach = math.min(width * 0.44, shoulder + 10.0 * bridgeFactor);
-        } else if (isExiting && progress <= 0.65) {
-          showBridge = true;
-          final u = (progress / 0.65).clamp(0.0, 1.0);
-          final suction = math.sin(math.pi * u);
-          bridgeOpacity = (1.0 - u).clamp(0.0, 1.0);
-          // During absorption, shoulder and waist emerge organically and taper smoothly to 0 at progress = 0
-          shoulder = math.min(maxContactRadius * 1.25, 28.0) * math.pow(suction, 0.7);
-          waist = shoulder * 0.55 * math.pow(suction, 0.9);
-          attach = math.min(width * 0.46, shoulder + 12.0 * suction);
-        } else {
-          showBridge = false;
-          bridgeOpacity = 0.0;
-          shoulder = 0.0;
-          waist = 0.0;
-          attach = 0.0;
-        }
+        path
+          ..moveTo(centerX, rect.top)
+          ..cubicTo(
+            centerX + wBulb * kX,
+            rect.top + (bulbY - rect.top) * kYTop,
+            centerX + wBulb,
+            bulbY - (bulbY - rect.top) * kYBulb,
+            centerX + wBulb,
+            bulbY,
+          )
+          ..cubicTo(
+            centerX + wBulb,
+            bulbY + (rect.bottom - bulbY) * 0.5523,
+            centerX + wBulb * 0.5523,
+            rect.bottom,
+            centerX,
+            rect.bottom,
+          )
+          ..cubicTo(
+            centerX - wBulb * 0.5523,
+            rect.bottom,
+            centerX - wBulb,
+            bulbY + (rect.bottom - bulbY) * 0.5523,
+            centerX - wBulb,
+            bulbY,
+          )
+          ..cubicTo(
+            centerX - wBulb,
+            bulbY - (bulbY - rect.top) * kYBulb,
+            centerX - wBulb * kX,
+            rect.top + (bulbY - rect.top) * kYTop,
+            centerX,
+            rect.top,
+          )
+          ..close();
+      }
 
-        // Calculate aperture contact Y and tangent angles following the lower contour
-        double yContact = yApex;
-        double contourRise = 0.0;
-        double contactCos = 0.0;
-        double contactSin = 1.0;
-        if (hasCutout && shoulder > 0) {
-          if (isPunchHole) {
-            final rClamped = math.min(shoulder, cutoutRadius * 0.92);
-            final cosAlpha = math.sqrt(math.max(0.0, cutoutRadius * cutoutRadius - rClamped * rClamped)) / cutoutRadius;
-            final sinAlpha = rClamped / cutoutRadius;
-            final yRim = cutoutCenterYLocal + cutoutRadius * cosAlpha;
-            yContact = yRim - deltaOverlap;
-            contourRise = math.max(0.0, yApex - yContact);
-            contactCos = cosAlpha;
-            contactSin = sinAlpha;
-          } else if (isPill) {
-            final flatHalf = math.max(0.0, (geometry!.width - geometry!.height) / 2);
-            if (shoulder > flatHalf) {
-              final dx = math.min(cutoutRadius * 0.92, shoulder - flatHalf);
-              final cosAlpha = math.sqrt(math.max(0.0, cutoutRadius * cutoutRadius - dx * dx)) / cutoutRadius;
-              final sinAlpha = dx / cutoutRadius;
-              final yRim = cutoutCenterYLocal + cutoutRadius * cosAlpha;
-              yContact = yRim - deltaOverlap;
-              contourRise = math.max(0.0, yApex - yContact);
-              contactCos = cosAlpha;
-              contactSin = sinAlpha;
-            }
-          }
-        }
+      // If exiting and within suction interval, connect exit bridge
+      if (isExiting && progress <= 0.60 && rect.bottom > 0) {
+        final u = (progress / 0.60).clamp(0.0, 1.0);
+        final suction = math.sin(math.pi * u);
+        final bridgeOpacity = (1.0 - u).clamp(0.0, 1.0);
+        final shoulder =
+            math.min(maxContactRadius * 1.25, 26.0) * math.pow(suction, 0.7);
+        final waist = shoulder * 0.52 * math.pow(suction, 0.9);
+        final attach = math.min(width * 0.46, shoulder + 12.0 * suction);
+        final join = math.max(yApex + 2.0, rect.top + height * 0.22);
+        final yContact = math.max(-anchorTop, yApex);
 
-        yContact = math.max(-anchorTop, yContact);
-
-        if (showBridge && shoulder > 0 && waist > 0 && join > yContact) {
+        if (shoulder > 0 && waist > 0 && join > yContact) {
           tailLeft = centerX - math.max(shoulder, attach);
           tailRight = centerX + math.max(shoulder, attach);
           tailTopY = yContact;
-          final waistY = math.max(yApex + 2.0, lerpDouble(yApex, rect.top, 0.58)!);
+          final waistY = math.max(
+            yApex + 2.0,
+            lerpDouble(yApex, rect.top, 0.55)!,
+          );
 
-          final bridge = Path();
-          bridge.moveTo(centerX - shoulder, yContact);
-
-          if (contourRise > 0.001) {
-            final cpY = yApex + contourRise / 3.0;
-            final cx = contactCos > 0.05
-                ? math.min(shoulder * 0.65, math.max(shoulder * 0.35, (4.0 / 3.0) * contourRise * (cutoutRadius * contactCos) / math.max(1.0, shoulder)))
-                : shoulder * 0.5;
-            bridge.cubicTo(
-              centerX - shoulder + cx,
-              cpY,
-              centerX + shoulder - cx,
-              cpY,
-              centerX + shoulder,
+          final bridge = Path()
+            ..moveTo(centerX - shoulder, yContact)
+            ..lineTo(centerX + shoulder, yContact)
+            ..cubicTo(
+              centerX + shoulder - (shoulder - waist) * 0.18,
+              yContact + (waistY - yContact) * 0.40,
+              centerX + waist + (shoulder - waist) * 0.08,
+              waistY - math.min(4.0, (waistY - yContact) * 0.28),
+              centerX + waist,
+              waistY,
+            )
+            ..cubicTo(
+              centerX + waist,
+              waistY + (join - waistY) * 0.35,
+              centerX + attach * 0.92,
+              join - (join - waistY) * 0.35,
+              centerX + attach,
+              join,
+            )
+            ..lineTo(centerX - attach, join)
+            ..cubicTo(
+              centerX - attach * 0.92,
+              join - (join - waistY) * 0.35,
+              centerX - waist,
+              waistY + (join - waistY) * 0.35,
+              centerX - waist,
+              waistY,
+            )
+            ..cubicTo(
+              centerX - waist - (shoulder - waist) * 0.08,
+              waistY - math.min(4.0, (waistY - yContact) * 0.28),
+              centerX - shoulder + (shoulder - waist) * 0.18,
+              yContact + (waistY - yContact) * 0.40,
+              centerX - shoulder,
               yContact,
-            );
-          } else {
-            bridge.lineTo(centerX + shoulder, yContact);
-          }
-
-          final h = math.max(1.0, waistY - yContact);
-          final w = math.max(0.1, shoulder - waist);
-          final double cp1x;
-          final double cp1y;
-          final double cp2x;
-          final double cp2y;
-
-          if (contactCos > 0.05) {
-            final maxL1 = math.min(w / contactCos * 0.45, h / contactSin * 0.35);
-            final l1 = math.max(1.0, maxL1);
-            cp1x = centerX + shoulder - l1 * contactCos;
-            cp1y = yContact + l1 * contactSin;
-            cp2x = centerX + waist + w * 0.06;
-            cp2y = waistY - math.min(4.0, h * 0.28);
-          } else {
-            cp1x = centerX + shoulder - w * 0.15;
-            cp1y = yContact + h * 0.38;
-            cp2x = centerX + waist + w * 0.10;
-            cp2y = waistY - math.min(4.0, h * 0.30);
-          }
-
-          // Concave cubic shoulder down to waist with tangent continuity
-          bridge.cubicTo(
-            cp1x,
-            cp1y,
-            cp2x,
-            cp2y,
-            centerX + waist,
-            waistY,
-          );
-          // Waist to target attachment
-          bridge.cubicTo(
-            centerX + waist,
-            waistY + 6,
-            centerX + attach,
-            join - 6,
-            centerX + attach,
-            join,
-          );
-          bridge.lineTo(centerX - attach, join);
-          bridge.cubicTo(
-            centerX - attach,
-            join - 6,
-            centerX - waist,
-            waistY + 6,
-            centerX - waist,
-            waistY,
-          );
-          bridge.cubicTo(
-            2 * centerX - cp2x,
-            cp2y,
-            2 * centerX - cp1x,
-            cp1y,
-            centerX - shoulder,
-            yContact,
-          );
-          bridge.close();
+            )
+            ..close();
 
           path = Path.combine(PathOperation.union, path, bridge);
 
-          paint.shader = LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color.lerp(bodyColor, Colors.black, math.max(0.65, bridgeOpacity))!,
-              bodyColor,
-            ],
-          ).createShader(
-            Rect.fromLTRB(0, yContact, 1, math.max(join, 1)),
-          );
+          if (bodyColor != Colors.black) {
+            paint.shader = LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Color.lerp(
+                  bodyColor,
+                  Colors.black,
+                  math.max(0.65, bridgeOpacity),
+                )!,
+                bodyColor,
+              ],
+            ).createShader(Rect.fromLTRB(0, yContact, 1, math.max(join, 1)));
+          }
         }
+      }
+    }
+
+    // Meniscus tip remaining on the Dynamic Island aperture after detachment
+    final bool showMeniscus =
+        !compact && !isExiting && isPill && progress > 0.28 && progress <= 0.40;
+    Path? meniscusPath;
+    if (showMeniscus) {
+      final recoil = ((progress - 0.28) / (0.40 - 0.28)).clamp(0.0, 1.0);
+      final recoilHeight = (1.0 - Curves.easeInCubic.transform(recoil));
+      final recoilWidth = (1.0 - Curves.easeIn.transform(recoil));
+      final mHeight = 7.5 * recoilHeight;
+      final mShoulder = 22.0 * recoilWidth;
+
+      if (mHeight > 0.2 && mShoulder > 1.0) {
+        final mYContact = math.max(-anchorTop, yApex);
+        meniscusPath = Path()
+          ..moveTo(centerX - mShoulder, mYContact)
+          ..lineTo(centerX + mShoulder, mYContact)
+          ..cubicTo(
+            centerX + mShoulder * 0.50,
+            mYContact + mHeight * 0.15,
+            centerX + 3.0,
+            mYContact + mHeight * 0.85,
+            centerX,
+            mYContact + mHeight,
+          )
+          ..cubicTo(
+            centerX - 3.0,
+            mYContact + mHeight * 0.85,
+            centerX - mShoulder * 0.50,
+            mYContact + mHeight * 0.15,
+            centerX - mShoulder,
+            mYContact,
+          )
+          ..close();
+
+        tailLeft = math.min(
+          tailLeft ?? (centerX - mShoulder),
+          centerX - mShoulder,
+        );
+        tailRight = math.max(
+          tailRight ?? (centerX + mShoulder),
+          centerX + mShoulder,
+        );
+        tailTopY = math.min(tailTopY ?? mYContact, mYContact);
       }
     }
 
@@ -1035,22 +1091,26 @@ class _NotificationPainter extends CustomPainter {
 
     canvas.save();
     canvas.clipRect(
-      Rect.fromLTRB(
-        clipLeft,
-        clipTop,
-        clipRight,
-        size.height + 24,
-      ),
+      Rect.fromLTRB(clipLeft, clipTop, clipRight, size.height + 24),
     );
-    if (expand > 0) {
+    final shadowOpacity = expand > 0
+        ? lerpDouble(0.20, 0.26, expand)!
+        : (!compact && progress > 0.28
+              ? 0.20 * ((progress - 0.28) / 0.08).clamp(0.0, 1.0)
+              : 0.0);
+    final elevation = expand > 0 ? lerpDouble(8.0, 12.0, expand)! : 8.0;
+    if (shadowOpacity > 0) {
       canvas.drawShadow(
         path,
-        Colors.black.withValues(alpha: 0.26 * expand),
-        12,
+        Colors.black.withValues(alpha: shadowOpacity),
+        elevation,
         true,
       );
     }
     canvas.drawPath(path, paint);
+    if (meniscusPath != null) {
+      canvas.drawPath(meniscusPath, Paint()..color = Colors.black);
+    }
     canvas.restore();
 
     if (debugShowGuides) {
@@ -1102,11 +1162,7 @@ class _NotificationPainter extends CustomPainter {
       Offset(centerX + 12, 0),
       originPaint,
     );
-    canvas.drawLine(
-      Offset(centerX, -12),
-      Offset(centerX, 12),
-      originPaint,
-    );
+    canvas.drawLine(Offset(centerX, -12), Offset(centerX, 12), originPaint);
 
     // 3. Top of animated neck and attachment contact points
     if (tailLeft != null && tailRight != null) {
