@@ -139,12 +139,37 @@ class NotchGeometry {
 
   /// Suggested vertical anchor coordinate where the water drop should originate.
   double get anchorTop {
-    if (!hasCutout) return math.max(0.0, insets.top);
+    if (!hasCutout || edge != CutoutEdge.top) return math.max(0.0, insets.top);
     if (source == NotchGeometrySource.profile) {
       return math.max(0.0, bottom);
     }
     return math.max(0.0, bottom - 1.0);
   }
+
+  /// Whether a physical cutout is located along the top display edge.
+  bool get hasTopCutout => hasCutout && edge == CutoutEdge.top;
+
+  /// The 2D origin point where the notification liquid morph begins.
+  ///
+  /// For top-edge cutouts (including top-center, top-left, and top-right corner cameras),
+  /// this follows the actual camera cutout's horizontal coordinate and anchor top.
+  ///
+  /// For physical side-edge cutouts (left/right) or bottom-only cutouts,
+  /// this returns the virtual top-center origin of the current display.
+  Offset get animationOrigin {
+    if (hasTopCutout) {
+      return Offset(anchorX, anchorTop);
+    }
+    final viewportCenter = screenSize.width > 0
+        ? (insets.left + screenSize.width - insets.right) / 2
+        : 0.0;
+    final safeTop = insets.top + 4.0;
+    return Offset(viewportCenter, safeTop);
+  }
+
+  /// Direction vector along which the notification liquid morph emerges.
+  /// Always vertically downward (+Y) across all device orientations.
+  Offset get animationDirection => const Offset(0.0, 1.0);
 
   /// Exact 2D anchor point where the fluid droplet emerges into the display.
   Offset get anchorPoint {
@@ -315,28 +340,48 @@ class NotchGeometryDetector {
           bounds.top <= padding.top &&
           bounds.bottom <= math.max(padding.top + 8.0, 48.0);
 
-      final isLeftSide =
-          ((padding.left > 0 && bounds.right <= padding.left + 4.0) ||
-              (bounds.left <= 2.0 && bounds.width < size.width * 0.5) ||
-              (!isInsideTopInset &&
-                  orientation == Orientation.landscape &&
-                  bounds.left <= sideMarginLeft &&
-                  bounds.width < size.width * 0.5));
-
-      final isRightSide =
-          ((padding.right > 0 &&
-                  bounds.left >= size.width - padding.right - 4.0) ||
-              (bounds.right >= size.width - 2.0 &&
-                  bounds.width < size.width * 0.5) ||
-              (!isInsideTopInset &&
-                  orientation == Orientation.landscape &&
-                  bounds.right >= size.width - sideMarginRight &&
-                  bounds.width < size.width * 0.5));
+      final isInsideLeftInset =
+          padding.left > 0 && bounds.right <= padding.left + 4.0;
+      final isInsideRightInset =
+          padding.right > 0 && bounds.left >= size.width - padding.right - 4.0;
 
       final isTopRegion =
           bounds.top <= topLimit && bounds.bottom <= bottomLimit;
       final isBottomRegion =
           bounds.bottom >= size.height - math.max(padding.bottom, 48.0);
+
+      // In portrait, any cutout situated in the top safe area / status bar region belongs
+      // to the top edge (e.g. Honor View 20 corner punch-hole) and must never be misclassified as a side cutout.
+      // In landscape, top-edge cutouts are identified when within the top inset and outside side insets.
+      final isTopCutout = (orientation == Orientation.portrait &&
+              (isInsideTopInset || isTopRegion)) ||
+          (isInsideTopInset && !isInsideLeftInset && !isInsideRightInset) ||
+          (isTopRegion &&
+              !isInsideLeftInset &&
+              !isInsideRightInset &&
+              padding.left == 0 &&
+              padding.right == 0 &&
+              bounds.top <= 8.0);
+
+      final isLeftSide = !isTopCutout &&
+          (isInsideLeftInset ||
+              (bounds.left <= 2.0 &&
+                  bounds.width < size.width * 0.5 &&
+                  !isTopRegion) ||
+              (orientation == Orientation.landscape &&
+                  bounds.left <= sideMarginLeft &&
+                  bounds.width < size.width * 0.5 &&
+                  !isInsideTopInset));
+
+      final isRightSide = !isTopCutout &&
+          (isInsideRightInset ||
+              (bounds.right >= size.width - 2.0 &&
+                  bounds.width < size.width * 0.5 &&
+                  !isTopRegion) ||
+              (orientation == Orientation.landscape &&
+                  bounds.right >= size.width - sideMarginRight &&
+                  bounds.width < size.width * 0.5 &&
+                  !isInsideTopInset));
 
       if (isLeftSide || isRightSide) {
         if (isLeftSide) {
@@ -344,7 +389,7 @@ class NotchGeometryDetector {
         } else {
           rightCandidates.add(bounds);
         }
-      } else if (isTopRegion) {
+      } else if (isTopCutout || isTopRegion) {
         topCandidates.add(bounds);
       } else if (isBottomRegion) {
         bottomCandidates.add(bounds);

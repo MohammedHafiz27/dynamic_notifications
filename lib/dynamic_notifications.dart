@@ -217,6 +217,18 @@ class DynamicNotifications extends StatefulWidget {
   /// Configuration for interactive gesture thresholds and physics.
   final NotificationGestureConfig gestureConfig;
 
+  /// For regression verification: indicates whether the horizontal side-cutout renderer was entered.
+  /// With vertical liquid morph for all orientations, this must always remain false.
+  @visibleForTesting
+  static bool get sideCutoutRendererEntered =>
+      _NotificationPainter.sideCutoutRendererEntered;
+
+  /// Resets the side cutout renderer verification flag.
+  @visibleForTesting
+  static void resetSideCutoutRendererFlag() {
+    _NotificationPainter.sideCutoutRendererEntered = false;
+  }
+
   @override
   State<DynamicNotifications> createState() => _DynamicNotificationsState();
 }
@@ -240,7 +252,6 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
   bool _pointerDown = false;
   int? _activePointerId;
   bool _isDragging = false;
-  double _dragStartX = 0;
   double _dragStartY = 0;
   double _dragBaseY = 0;
   VelocityTracker? _velocityTracker;
@@ -388,7 +399,6 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
     _pointerMoved = false;
     _isDragging = false;
     _velocityTracker = null;
-    _dragStartX = 0.0;
     _dragStartY = 0.0;
     _dragBaseY = 0.0;
     _drag = 0.0;
@@ -494,7 +504,6 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
     _activePointerId = null;
     _pointerDown = false;
     _velocityTracker = null;
-    _dragStartX = 0.0;
     _dragStartY = 0.0;
     _dragBaseY = 0.0;
     _springController.stop();
@@ -583,7 +592,6 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
     _pointerDownTime = clock.now();
     _pointerDownPosition = event.position;
     _pointerMoved = false;
-    _dragStartX = event.position.dx;
     _dragStartY = event.position.dy;
     _dragBaseY = _drag;
     _isDragging = false;
@@ -601,37 +609,13 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
         (event.position - _pointerDownPosition!).distance > 18.0) {
       _pointerMoved = true;
     }
-    final geometry =
-        widget.geometryOverride ?? NotchGeometryDetector.detect(context);
-    final isSide = geometry.hasCutout &&
-        (geometry.edge == CutoutEdge.left || geometry.edge == CutoutEdge.right);
 
-    final deltaX = event.position.dx - _dragStartX;
     final deltaY = event.position.dy - _dragStartY;
-    if (!_isDragging &&
-        (_dragBaseY != 0 ||
-            deltaY.abs() > 4.0 ||
-            (isSide && deltaX.abs() > 4.0))) {
+    if (!_isDragging && (_dragBaseY != 0 || deltaY.abs() > 4.0)) {
       _isDragging = true;
     }
     if (_isDragging) {
-      final double effectiveDelta;
-      if (isSide) {
-        if (deltaY > 8.0 && deltaY.abs() > deltaX.abs()) {
-          // Downward drag pull-to-open
-          effectiveDelta = deltaY;
-        } else if (geometry.edge == CutoutEdge.left) {
-          // Leftward drag into left cutout (only deltaX <= 0 reverses into cutout)
-          effectiveDelta = deltaX <= 0 ? deltaX : 0.0;
-        } else {
-          // Rightward drag into right cutout (only deltaX >= 0 reverses into cutout)
-          effectiveDelta = deltaX >= 0 ? -deltaX : 0.0;
-        }
-      } else {
-        effectiveDelta = deltaY;
-      }
-
-      final newDrag = (_dragBaseY + effectiveDelta).clamp(
+      final newDrag = (_dragBaseY + deltaY).clamp(
         widget.gestureConfig.maxUpwardDrag,
         widget.gestureConfig.maxDownwardDrag,
       );
@@ -656,40 +640,23 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
     _pointerDown = false;
     if (_exiting) return;
     _velocityTracker?.addPosition(event.timeStamp, event.position);
-    final velocityEstimate =
-        _velocityTracker?.getVelocityEstimate()?.pixelsPerSecond ?? Offset.zero;
+    final velocity =
+        _velocityTracker?.getVelocityEstimate()?.pixelsPerSecond.dy ?? 0.0;
     _velocityTracker = null;
-
-    final geometry =
-        widget.geometryOverride ?? NotchGeometryDetector.detect(context);
-    final isSide = geometry.hasCutout &&
-        (geometry.edge == CutoutEdge.left || geometry.edge == CutoutEdge.right);
-
-    final double dismissVelocity;
-    if (isSide) {
-      if (geometry.edge == CutoutEdge.left) {
-        dismissVelocity = velocityEstimate.dx;
-      } else {
-        dismissVelocity = -velocityEstimate.dx;
-      }
-    } else {
-      dismissVelocity = velocityEstimate.dy;
-    }
-    final openVelocity = velocityEstimate.dy;
 
     if (_isDragging || _drag != 0) {
       final config = widget.gestureConfig;
 
-      // Cutout dismissal: crossed threshold toward cutout, or flung toward cutout
+      // Vertical dismissal: crossed threshold upward, or flung upward
       if (_drag <= config.dismissThreshold ||
-          (_drag <= 0 && dismissVelocity <= config.dismissVelocityThreshold)) {
+          (_drag <= 0 && velocity <= config.dismissVelocityThreshold)) {
         _exit();
         return;
       }
 
-      // Downward open: crossed threshold downward, or flung downward
+      // Vertical open: crossed threshold downward, or flung downward
       if (_drag >= config.openThreshold ||
-          (_drag >= 0 && openVelocity >= config.openVelocityThreshold)) {
+          (_drag >= 0 && velocity >= config.openVelocityThreshold)) {
         _open();
         return;
       }
@@ -769,21 +736,29 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
     final geometry =
         widget.geometryOverride ?? NotchGeometryDetector.detect(context);
 
+    final hasTopCutout = geometry.hasTopCutout;
+
     if (notification != null && !_reduceMotion) {
-      if (geometry.hasCutout) {
-        anchorX = geometry.center.dx;
-        anchorTop = geometry.anchorTop;
-      } else if (widget.geometryOverride != null) {
+      if (hasTopCutout) {
+        anchorX = geometry.animationOrigin.dx;
+        anchorTop = geometry.animationOrigin.dy;
+      } else if (widget.geometryOverride != null &&
+          geometry.edge != CutoutEdge.left &&
+          geometry.edge != CutoutEdge.right &&
+          geometry.edge != CutoutEdge.bottom) {
         anchorX = geometry.center.dx;
         anchorTop = geometry.anchorTop;
       } else {
-        anchorTop = safeTop;
+        // Physical side-edge cutout, bottom cutout, or no cutout:
+        // Use the horizontal center of the current screen's top edge as the virtual animation origin.
         anchorX = viewportCenter;
+        anchorTop = safeTop;
       }
       anchorTop = math.max(0, anchorTop - widget.originLift);
     }
-    final isSideCutout = geometry.hasCutout &&
-        (geometry.edge == CutoutEdge.left || geometry.edge == CutoutEdge.right);
+
+    final anchorOffset = hasTopCutout ? anchorX - viewportCenter : 0.0;
+    final landing = math.max(0.0, safeTop - anchorTop);
 
     return Stack(
       fit: StackFit.expand,
@@ -791,60 +766,31 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
       children: [
         widget.child,
         if (notification != null)
-          isSideCutout
-              ? Positioned(
-                  top: safeTop,
-                  left: 0,
-                  right: 0,
-                  bottom: padding.bottom,
-                  child: RepaintBoundary(
-                    child: Padding(
-                      padding: EdgeInsets.only(
-                        left: padding.left + 16,
-                        right: padding.right + 16,
-                      ),
-                      child: Align(
-                        alignment: Alignment.topCenter,
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 396),
-                          child: _buildNotification(
-                            notification,
-                            0.0,
-                            0.0,
-                            safeTop,
-                            geometry,
-                            widget.debugShowGuides,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                )
-              : Positioned(
-                  top: anchorTop,
-                  left: padding.left,
-                  right: padding.right,
-                  bottom: padding.bottom,
-                  child: RepaintBoundary(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Align(
-                        alignment: Alignment.topCenter,
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 396),
-                          child: _buildNotification(
-                            notification,
-                            math.max(0.0, safeTop - anchorTop),
-                            anchorX - viewportCenter,
-                            anchorTop,
-                            geometry,
-                            widget.debugShowGuides,
-                          ),
-                        ),
-                      ),
+          Positioned(
+            top: anchorTop,
+            left: padding.left,
+            right: padding.right,
+            bottom: padding.bottom,
+            child: RepaintBoundary(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 396),
+                    child: _buildNotification(
+                      notification,
+                      landing,
+                      anchorOffset,
+                      anchorTop,
+                      geometry,
+                      widget.debugShowGuides,
                     ),
                   ),
                 ),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -975,18 +921,7 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
             } else {
               effectiveDrag = _drag;
             }
-            final isSide = geometry.hasCutout &&
-                (geometry.edge == CutoutEdge.left ||
-                    geometry.edge == CutoutEdge.right);
-            final Offset offset;
-            if (isSide && effectiveDrag <= 0) {
-              final dragX = geometry.edge == CutoutEdge.left
-                  ? effectiveDrag
-                  : -effectiveDrag;
-              offset = Offset(dragX, 0);
-            } else {
-              offset = Offset(0, effectiveDrag);
-            }
+            final offset = Offset(0, effectiveDrag);
             final morphProgress = _morphProgress;
             final contentOpacity = reveal;
             final contentScale = lerpDouble(0.94, 1.0, reveal)!;
@@ -1000,7 +935,7 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
                       key: const ValueKey('dynamic-notification-shape'),
                       painter: _NotificationPainter(
                         progress: progress,
-                        drag: isSide ? effectiveDrag : offset.dy,
+                        drag: offset.dy,
                         landing: landing,
                         anchorOffset: anchorOffset,
                         anchorTop: anchorTop,
@@ -1075,20 +1010,22 @@ class _NotificationPainter extends CustomPainter {
   final bool isExiting;
   final double morphProgress;
 
+  @visibleForTesting
+  static bool sideCutoutRendererEntered = false;
+
+  @visibleForTesting
+  void paintSideCutout(Canvas canvas, Size size, CutoutEdge edge) {
+    sideCutoutRendererEntered = true;
+    _paintSideCutout(canvas, size, edge);
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     final cardHeight = size.height - landing;
     if (progress == 0 || size.width == 0 || cardHeight <= 0) return;
 
-    if (geometry != null &&
-        geometry!.hasCutout &&
-        (geometry!.edge == CutoutEdge.left ||
-            geometry!.edge == CutoutEdge.right)) {
-      _paintSideCutout(canvas, size, geometry!.edge);
-      return;
-    }
-
-    final hasCutout = geometry?.hasCutout ?? false;
+    final hasCutout = (geometry?.hasCutout ?? false) &&
+        (geometry?.edge == CutoutEdge.top);
     final isPunchHole = hasCutout && geometry?.shape == NotchShape.punchHole;
     final isPill = hasCutout && geometry?.shape == NotchShape.pill;
 
@@ -1254,17 +1191,17 @@ class _NotificationPainter extends CustomPainter {
 
       // Droplet vertical extent
       final double detachmentExtent;
-      final double minTip;
+      final double minTip = 0.0;
       if (drag == 0.0) {
-        detachmentExtent = math.max(rect.bottom - yApex, 78.0);
-        minTip = 22.0;
+        detachmentExtent = math.max(0.0, rect.bottom - yApex);
       } else {
+        final maxDetachment = math.max(0.0, landing + cardHeight - yApex);
+        final minNeck = math.min(78.0, maxDetachment);
         final baseDetachment = math.max(
           rect.bottom - drag - yApex,
-          78.0,
+          minNeck,
         );
         detachmentExtent = math.max(0.0, baseDetachment + drag);
-        minTip = 0.0;
       }
       final yBottom =
           yApex +
@@ -1283,7 +1220,7 @@ class _NotificationPainter extends CustomPainter {
       // Bulb width: rounded bulb forming at the bottom
       final wBulb =
           lerpDouble(
-            10.0,
+            math.min(shoulder * 0.45, 6.0),
             math.max(width / 2, 24.5),
             Curves.easeInOutCubic.transform(u),
           )!;
@@ -1395,22 +1332,6 @@ class _NotificationPainter extends CustomPainter {
         yContact,
       );
       path.close();
-
-      if (surface != Colors.black) {
-        paint.shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Colors.black,
-            Color.lerp(Colors.black, surface, 0.35)!,
-            Color.lerp(Colors.black, surface, 0.85)!,
-            surface,
-          ],
-          stops: const [0.0, 0.30, 0.70, 1.0],
-        ).createShader(
-          Rect.fromLTRB(0, yContact, 1, math.max(yBottom, yContact + 1.0)),
-        );
-      }
     } else {
       final bulbY = rect.top + height * (0.50 + 0.14 * effectiveEgg);
       final wBulb = width / 2;
@@ -1501,15 +1422,15 @@ class _NotificationPainter extends CustomPainter {
 
     }
 
-    // Meniscus tip remaining on the Dynamic Island aperture after detachment
+    // Meniscus tip remaining on the Dynamic Island aperture after detachment during entrance only
     final bool showMeniscus =
-        !compact && isPill && progress > 0.28 && progress <= 0.40;
+        !compact && !isExiting && drag == 0.0 && isPill && progress > 0.28 && progress <= 0.40;
     Path? meniscusPath;
     if (showMeniscus) {
       final recoil = ((progress - 0.28) / (0.40 - 0.28)).clamp(0.0, 1.0);
       final recoilHeight = (1.0 - Curves.easeInCubic.transform(recoil));
       final recoilWidth = (1.0 - Curves.easeIn.transform(recoil));
-      final mHeight = 7.5 * recoilHeight;
+      final mHeight = 3.5 * recoilHeight;
       final mShoulder = 22.0 * recoilWidth;
 
       if (mHeight > 0.2 && mShoulder > 1.0) {
@@ -1588,7 +1509,7 @@ class _NotificationPainter extends CustomPainter {
     }
     canvas.drawPath(path, paint);
     if (meniscusPath != null) {
-      canvas.drawPath(meniscusPath, Paint()..color = Colors.black);
+      canvas.drawPath(meniscusPath, Paint()..color = bodyColor);
     }
     canvas.restore();
 
@@ -1615,7 +1536,9 @@ class _NotificationPainter extends CustomPainter {
     required double? tailRight,
   }) {
     // 1. Cutout bounding box in local painter coordinates
-    if (geometry?.bounds != null) {
+    final hasTopCutout = (geometry?.hasCutout ?? false) &&
+        (geometry?.edge == CutoutEdge.top);
+    if (hasTopCutout && geometry?.bounds != null) {
       final b = geometry!.bounds!;
       final cutoutCenterLocalX = size.width / 2 + anchorOffset;
       final cutoutCenterLocalY = b.center.dy - anchorTop;
@@ -1672,6 +1595,7 @@ class _NotificationPainter extends CustomPainter {
   }
 
   void _paintSideCutout(Canvas canvas, Size size, CutoutEdge edge) {
+    sideCutoutRendererEntered = true;
     final cardHeight = size.height - landing;
     if (progress == 0 || size.width == 0 || cardHeight <= 0) return;
 

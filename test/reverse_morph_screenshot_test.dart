@@ -299,7 +299,7 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('Capture visual evidence for horizontal left-side cutout liquid morph', (
+  testWidgets('Capture visual evidence for vertical liquid morph on left-side cutout device', (
     tester,
   ) async {
     const testSize = Size(892, 412);
@@ -422,26 +422,26 @@ void main() {
     // 1. Progress 0.0 - Fully Expanded Resting Card (Centered horizontally, upright)
     await saveScreenshot(repaintKey, 'side_left_0_expanded.png');
 
-    // 2. Progress 0.25 - Leftward drag -20dp
+    // 2. Progress 0.25 - Upward drag -20dp
     final gesture = await tester.startGesture(
       tester.getCenter(find.text('Package Delivered')),
     );
-    await gesture.moveBy(const Offset(-20, 0));
+    await gesture.moveBy(const Offset(0, -20));
     await tester.pump();
     await saveScreenshot(repaintKey, 'side_left_25_contracting.png');
 
-    // 3. Progress 0.50 - Leftward drag -40dp (horizontal airborne droplet migrating to left cutout)
-    await gesture.moveBy(const Offset(-20, 0));
+    // 3. Progress 0.50 - Upward drag -40dp (vertical airborne droplet rising towards top-center)
+    await gesture.moveBy(const Offset(0, -20));
     await tester.pump();
     await saveScreenshot(repaintKey, 'side_left_50_droplet.png');
 
-    // 4. Progress 0.75 - Leftward drag -60dp (neck attaches to left cutout)
-    await gesture.moveBy(const Offset(-20, 0));
+    // 4. Progress 0.75 - Upward drag -60dp (neck attaches to virtual top-center)
+    await gesture.moveBy(const Offset(0, -20));
     await tester.pump();
     await saveScreenshot(repaintKey, 'side_left_75_neck.png');
 
-    // 5. Progress 1.00 - Leftward drag -80dp (absorbed into left camera cutout)
-    await gesture.moveBy(const Offset(-20, 0));
+    // 5. Progress 1.00 - Upward drag -80dp (absorbed into top-center edge)
+    await gesture.moveBy(const Offset(0, -20));
     await tester.pump();
     await saveScreenshot(repaintKey, 'side_left_100_absorbed.png');
 
@@ -449,7 +449,7 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('Capture visual evidence for horizontal right-side cutout liquid morph', (
+  testWidgets('Capture visual evidence for vertical liquid morph on right-side cutout device', (
     tester,
   ) async {
     const testSize = Size(892, 412);
@@ -555,26 +555,26 @@ void main() {
     // 1. Progress 0.0 - Fully Expanded
     await saveScreenshot(repaintKey, 'side_right_0_expanded.png');
 
-    // 2. Progress 0.25 - Rightward drag +20dp
+    // 2. Progress 0.25 - Upward drag -20dp
     final gesture = await tester.startGesture(
       tester.getCenter(find.text('Meeting in 5 min')),
     );
-    await gesture.moveBy(const Offset(20, 0));
+    await gesture.moveBy(const Offset(0, -20));
     await tester.pump();
     await saveScreenshot(repaintKey, 'side_right_25_contracting.png');
 
-    // 3. Progress 0.50 - Rightward drag +40dp
-    await gesture.moveBy(const Offset(20, 0));
+    // 3. Progress 0.50 - Upward drag -40dp
+    await gesture.moveBy(const Offset(0, -20));
     await tester.pump();
     await saveScreenshot(repaintKey, 'side_right_50_droplet.png');
 
-    // 4. Progress 0.75 - Rightward drag +60dp (neck attached to right cutout)
-    await gesture.moveBy(const Offset(20, 0));
+    // 4. Progress 0.75 - Upward drag -60dp (neck attached to top-center edge)
+    await gesture.moveBy(const Offset(0, -20));
     await tester.pump();
     await saveScreenshot(repaintKey, 'side_right_75_neck.png');
 
-    // 5. Progress 1.00 - Rightward drag +80dp (absorbed into right cutout)
-    await gesture.moveBy(const Offset(20, 0));
+    // 5. Progress 1.00 - Upward drag -80dp (absorbed into top-center edge)
+    await gesture.moveBy(const Offset(0, -20));
     await tester.pump();
     await saveScreenshot(repaintKey, 'side_right_100_absorbed.png');
 

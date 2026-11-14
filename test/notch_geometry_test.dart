@@ -2272,4 +2272,201 @@ void main() {
           .setMockMethodCallHandler(channel, null);
     });
   });
+
+  group('Separation of Physical Geometry and Vertical Animation Origin', () {
+    test('top-center cutout: animationOrigin uses cutout X and anchorTop; direction is vertical +Y', () {
+      const geo = NotchGeometry(
+        bounds: Rect.fromLTWH(184.5, 15, 24, 24),
+        center: Offset(196.5, 27),
+        width: 24,
+        height: 24,
+        top: 15,
+        bottom: 39,
+        screenSize: Size(393, 852),
+        insets: EdgeInsets.only(top: 48),
+        source: NotchGeometrySource.displayFeature,
+        confidence: NotchGeometryConfidence.exact,
+        shape: NotchShape.punchHole,
+        hasCutout: true,
+        edge: CutoutEdge.top,
+      );
+
+      expect(geo.hasCutout, isTrue);
+      expect(geo.edge, CutoutEdge.top);
+      expect(geo.hasTopCutout, isTrue);
+      expect(geo.animationOrigin, const Offset(196.5, 38.0));
+      expect(geo.animationDirection, const Offset(0.0, 1.0));
+    });
+
+    test('top-left corner camera (Honor View 20 in portrait): animationOrigin uses camera X', () {
+      const mediaQuery = MediaQueryData(
+        size: Size(412, 892),
+        viewPadding: EdgeInsets.only(top: 40),
+        displayFeatures: [
+          DisplayFeature(
+            bounds: Rect.fromLTWH(24, 10, 24, 24),
+            type: DisplayFeatureType.cutout,
+            state: DisplayFeatureState.unknown,
+          ),
+        ],
+      );
+
+      final geo = NotchGeometryDetector.fromMediaQuery(
+        mediaQuery: mediaQuery,
+        platform: TargetPlatform.android,
+      );
+
+      expect(geo.hasCutout, isTrue);
+      expect(geo.edge, CutoutEdge.top);
+      expect(geo.hasTopCutout, isTrue);
+      expect(geo.center.dx, 36.0);
+      expect(geo.animationOrigin.dx, 36.0);
+      expect(geo.animationDirection, const Offset(0.0, 1.0));
+    });
+
+    test('top-left corner camera in portrait with reported left inset: preserved as CutoutEdge.top', () {
+      const mediaQuery = MediaQueryData(
+        size: Size(412, 892),
+        viewPadding: EdgeInsets.only(top: 40, left: 24),
+        displayFeatures: [
+          DisplayFeature(
+            bounds: Rect.fromLTWH(0, 10, 24, 24),
+            type: DisplayFeatureType.cutout,
+            state: DisplayFeatureState.unknown,
+          ),
+        ],
+      );
+
+      final geo = NotchGeometryDetector.fromMediaQuery(
+        mediaQuery: mediaQuery,
+        platform: TargetPlatform.android,
+      );
+
+      expect(geo.hasCutout, isTrue);
+      expect(geo.edge, CutoutEdge.top);
+      expect(geo.hasTopCutout, isTrue);
+      expect(geo.animationOrigin.dx, 12.0);
+      expect(geo.animationDirection, const Offset(0.0, 1.0));
+    });
+
+    test('top-right corner camera: animationOrigin uses camera X and anchorTop', () {
+      const geo = NotchGeometry(
+        bounds: Rect.fromLTWH(364, 10, 24, 24),
+        center: Offset(376, 22),
+        width: 24,
+        height: 24,
+        top: 10,
+        bottom: 34,
+        screenSize: Size(412, 892),
+        insets: EdgeInsets.only(top: 40),
+        source: NotchGeometrySource.displayFeature,
+        confidence: NotchGeometryConfidence.exact,
+        shape: NotchShape.punchHole,
+        hasCutout: true,
+        edge: CutoutEdge.top,
+      );
+
+      expect(geo.hasCutout, isTrue);
+      expect(geo.hasTopCutout, isTrue);
+      expect(geo.animationOrigin, const Offset(376.0, 33.0));
+      expect(geo.animationDirection, const Offset(0.0, 1.0));
+    });
+
+    test('left-side cutout (landscape): physical geometry is left; animationOrigin is virtual top-center', () {
+      const geo = NotchGeometry(
+        bounds: Rect.fromLTWH(12, 190, 24, 24),
+        center: Offset(24, 202),
+        width: 24,
+        height: 24,
+        top: 190,
+        bottom: 214,
+        screenSize: Size(892, 412),
+        insets: EdgeInsets.only(left: 48),
+        source: NotchGeometrySource.displayFeature,
+        confidence: NotchGeometryConfidence.exact,
+        shape: NotchShape.punchHole,
+        hasCutout: true,
+        edge: CutoutEdge.left,
+      );
+
+      expect(geo.hasCutout, isTrue);
+      expect(geo.edge, CutoutEdge.left);
+      expect(geo.hasTopCutout, isFalse);
+      expect(geo.anchorPoint, const Offset(35.0, 202.0)); // Physical aperture anchor
+      expect(geo.animationOrigin, const Offset(470.0, 4.0)); // Virtual top-center: (48 + 892) / 2 = 470
+      expect(geo.animationDirection, const Offset(0.0, 1.0)); // Downward (+Y)
+    });
+
+    test('right-side cutout (reverse landscape): physical geometry is right; animationOrigin is virtual top-center', () {
+      const geo = NotchGeometry(
+        bounds: Rect.fromLTWH(856, 190, 24, 24),
+        center: Offset(868, 202),
+        width: 24,
+        height: 24,
+        top: 190,
+        bottom: 214,
+        screenSize: Size(892, 412),
+        insets: EdgeInsets.only(right: 48),
+        source: NotchGeometrySource.displayFeature,
+        confidence: NotchGeometryConfidence.exact,
+        shape: NotchShape.punchHole,
+        hasCutout: true,
+        edge: CutoutEdge.right,
+      );
+
+      expect(geo.hasCutout, isTrue);
+      expect(geo.edge, CutoutEdge.right);
+      expect(geo.hasTopCutout, isFalse);
+      expect(geo.anchorPoint, const Offset(857.0, 202.0)); // Physical aperture anchor
+      expect(geo.animationOrigin, const Offset(422.0, 4.0)); // Virtual top-center: (892 - 48) / 2 = 422
+      expect(geo.animationDirection, const Offset(0.0, 1.0)); // Downward (+Y)
+    });
+
+    test('bottom-only cutout: physical geometry is bottom; animationOrigin is virtual top-center', () {
+      const geo = NotchGeometry(
+        bounds: Rect.fromLTWH(184.5, 820, 24, 24),
+        center: Offset(196.5, 832),
+        width: 24,
+        height: 24,
+        top: 820,
+        bottom: 844,
+        screenSize: Size(393, 852),
+        insets: EdgeInsets.only(top: 24, bottom: 48),
+        source: NotchGeometrySource.displayFeature,
+        confidence: NotchGeometryConfidence.exact,
+        shape: NotchShape.punchHole,
+        hasCutout: true,
+        edge: CutoutEdge.bottom,
+      );
+
+      expect(geo.hasCutout, isTrue);
+      expect(geo.edge, CutoutEdge.bottom);
+      expect(geo.hasTopCutout, isFalse);
+      expect(geo.animationOrigin, const Offset(196.5, 28.0)); // Virtual top-center
+      expect(geo.animationDirection, const Offset(0.0, 1.0)); // Downward (+Y)
+    });
+
+    test('no-cutout fallback: animationOrigin is screen top-center safe area', () {
+      const geo = NotchGeometry(
+        bounds: null,
+        center: Offset(196.5, 22),
+        width: 0,
+        height: 0,
+        top: 0,
+        bottom: 44,
+        screenSize: Size(393, 852),
+        insets: EdgeInsets.only(top: 44),
+        source: NotchGeometrySource.safeArea,
+        confidence: NotchGeometryConfidence.fallback,
+        shape: NotchShape.none,
+        hasCutout: false,
+        edge: CutoutEdge.none,
+      );
+
+      expect(geo.hasCutout, isFalse);
+      expect(geo.hasTopCutout, isFalse);
+      expect(geo.animationOrigin, const Offset(196.5, 48.0));
+      expect(geo.animationDirection, const Offset(0.0, 1.0));
+    });
+  });
 }
