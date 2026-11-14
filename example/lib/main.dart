@@ -63,6 +63,7 @@ class _DemoAppState extends State<DemoApp> {
   bool _showGuides = true;
   bool _useNativeGeometry = false;
   bool _highContrast = false;
+  NotificationRenderMode _renderMode = NotificationRenderMode.standard;
   double? _progressOverride;
   NotchGeometry? _nativeGeometry;
   Map<String, dynamic>? _nativeData;
@@ -212,6 +213,27 @@ class _DemoAppState extends State<DemoApp> {
                     setSheetState(() {});
                   },
                 ),
+                const SizedBox(height: 8),
+                const Text('Rendering Mode (A/B Test)', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                SegmentedButton<NotificationRenderMode>(
+                  segments: const [
+                    ButtonSegment(
+                      value: NotificationRenderMode.standard,
+                      label: Text('Verified Standard', style: TextStyle(fontSize: 11)),
+                    ),
+                    ButtonSegment(
+                      value: NotificationRenderMode.experimentalLiquid,
+                      label: Text('Liquid Notch (Exp)', style: TextStyle(fontSize: 11)),
+                    ),
+                  ],
+                  selected: {_renderMode},
+                  onSelectionChanged: (val) {
+                    setState(() => _renderMode = val.first);
+                    setSheetState(() {});
+                  },
+                ),
+                const SizedBox(height: 12),
                 TextButton(
                   onPressed: () {
                     _notifications.dismiss();
@@ -251,6 +273,7 @@ class _DemoAppState extends State<DemoApp> {
           debugShowGuides: _debugMode && _showGuides,
           geometryOverride: _useNativeGeometry ? _nativeGeometry : null,
           progressOverride: _progressOverride,
+          renderMode: _renderMode,
           child: Stack(
             children: [
               child!,
@@ -260,6 +283,7 @@ class _DemoAppState extends State<DemoApp> {
                   showGuides: _showGuides,
                   useNativeGeometry: _useNativeGeometry,
                   highContrast: _highContrast,
+                  renderMode: _renderMode,
                   nativeData: _nativeData,
                   latencyUs: _benchmarkLatencyUs,
                   progressOverride: _progressOverride,
@@ -268,6 +292,9 @@ class _DemoAppState extends State<DemoApp> {
                   },
                   onProgressChanged: (val) {
                     setState(() => _progressOverride = val);
+                  },
+                  onToggleRenderMode: (mode) {
+                    setState(() => _renderMode = mode);
                   },
                   onToggleGeometrySource: (useNative) async {
                     if (useNative && _nativeGeometry == null) {
@@ -502,11 +529,13 @@ class _GeometryDebugHud extends StatefulWidget {
     required this.showGuides,
     required this.useNativeGeometry,
     required this.highContrast,
+    required this.renderMode,
     required this.nativeData,
     required this.latencyUs,
     required this.progressOverride,
     required this.onToggleGuides,
     required this.onProgressChanged,
+    required this.onToggleRenderMode,
     required this.onToggleGeometrySource,
     required this.onToggleHighContrast,
     required this.onRunBenchmark,
@@ -518,11 +547,13 @@ class _GeometryDebugHud extends StatefulWidget {
   final bool showGuides;
   final bool useNativeGeometry;
   final bool highContrast;
+  final NotificationRenderMode renderMode;
   final Map<String, dynamic>? nativeData;
   final int? latencyUs;
   final double? progressOverride;
   final ValueChanged<bool> onToggleGuides;
   final ValueChanged<double?> onProgressChanged;
+  final ValueChanged<NotificationRenderMode> onToggleRenderMode;
   final ValueChanged<bool> onToggleGeometrySource;
   final ValueChanged<bool> onToggleHighContrast;
   final VoidCallback onRunBenchmark;
@@ -640,6 +671,12 @@ class _GeometryDebugHudState extends State<_GeometryDebugHud> {
                       ),
                       _metricRow('Shape / Source', '${widget.geometry.shape.name} / ${widget.geometry.source.name} (${widget.geometry.confidence.name})'),
                       _metricRow(
+                        'Renderer (A/B)',
+                        widget.renderMode == NotificationRenderMode.standard
+                            ? 'Verified Standard'
+                            : 'Liquid Notch (Experimental)',
+                      ),
+                      _metricRow(
                         'Cutout Bounds',
                         widget.geometry.bounds != null
                             ? '[${widget.geometry.bounds!.left.toStringAsFixed(1)}, ${widget.geometry.bounds!.top.toStringAsFixed(1)}, ${widget.geometry.bounds!.right.toStringAsFixed(1)}, ${widget.geometry.bounds!.bottom.toStringAsFixed(1)}]'
@@ -698,6 +735,49 @@ class _GeometryDebugHudState extends State<_GeometryDebugHud> {
                         ),
 
                       const Divider(color: Colors.white24, height: 16),
+
+                      // A/B Renderer Selection
+                      Row(
+                        children: [
+                          const Text(
+                            'Renderer (A/B): ',
+                            style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                side: BorderSide(
+                                  color: widget.renderMode == NotificationRenderMode.standard
+                                      ? const Color(0xFF00E5FF)
+                                      : const Color(0xFFFF4081),
+                                ),
+                                padding: const EdgeInsets.symmetric(vertical: 4),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              onPressed: () {
+                                widget.onToggleRenderMode(
+                                  widget.renderMode == NotificationRenderMode.standard
+                                      ? NotificationRenderMode.experimentalLiquid
+                                      : NotificationRenderMode.standard,
+                                );
+                              },
+                              child: Text(
+                                widget.renderMode == NotificationRenderMode.standard
+                                    ? 'Mode: Verified Standard'
+                                    : 'Mode: Liquid Notch (Exp)',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: widget.renderMode == NotificationRenderMode.standard
+                                      ? const Color(0xFF00E5FF)
+                                      : const Color(0xFFFF4081),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
 
                       // Control buttons
                       Row(

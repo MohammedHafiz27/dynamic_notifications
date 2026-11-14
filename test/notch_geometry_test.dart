@@ -1148,5 +1148,96 @@ void main() {
       // Verify debug guides painted (rect, lines for crosshair & neck guide)
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets('DynamicNotifications renders smoothly with NotificationRenderMode.experimentalLiquid on entrance and exit', (tester) async {
+      final ctrl = DynamicNotificationController();
+      const testGeometry = NotchGeometry(
+        bounds: Rect.fromLTWH(188, 8, 24, 24),
+        center: Offset(200, 20),
+        width: 24,
+        height: 24,
+        top: 8,
+        bottom: 32,
+        screenSize: Size(400, 800),
+        insets: EdgeInsets.only(top: 32),
+        source: NotchGeometrySource.displayFeature,
+        confidence: NotchGeometryConfidence.exact,
+        shape: NotchShape.punchHole,
+        hasCutout: true,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DynamicNotifications(
+            controller: ctrl,
+            geometryOverride: testGeometry,
+            renderMode: NotificationRenderMode.experimentalLiquid,
+            child: const Scaffold(body: Center(child: Text('Content'))),
+          ),
+        ),
+      );
+
+      ctrl.show(const DynamicNotification(title: 'Liquid Mode Test', duration: null));
+      await tester.pump();
+
+      // Entrance bridge phase
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(find.byKey(const ValueKey('dynamic-notification-shape')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      // Expansion phase
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tester.takeException(), isNull);
+
+      // Fully settled
+      await tester.pumpAndSettle();
+      expect(find.text('Liquid Mode Test').hitTestable(), findsOneWidget);
+
+      // Dismissal / exit absorption phase
+      ctrl.dismiss();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(tester.takeException(), isNull);
+      await tester.pumpAndSettle();
+      expect(find.text('Liquid Mode Test'), findsNothing);
+    });
+
+    testWidgets('DynamicNotifications with NotificationRenderMode.experimentalLiquid does not paint negative screen coordinates when anchorTop is zero', (tester) async {
+      final ctrl = DynamicNotificationController();
+      const testGeometry = NotchGeometry(
+        bounds: Rect.fromLTRB(188, 0, 212, 0),
+        center: Offset(200, 0),
+        width: 24,
+        height: 0,
+        top: 0,
+        bottom: 0,
+        screenSize: Size(400, 800),
+        insets: EdgeInsets.zero,
+        source: NotchGeometrySource.none,
+        confidence: NotchGeometryConfidence.none,
+        shape: NotchShape.punchHole,
+        hasCutout: true,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DynamicNotifications(
+            controller: ctrl,
+            geometryOverride: testGeometry,
+            renderMode: NotificationRenderMode.experimentalLiquid,
+            child: const Scaffold(body: Center(child: Text('Zero Anchor'))),
+          ),
+        ),
+      );
+
+      ctrl.show(const DynamicNotification(title: 'Edge Screen', duration: null));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 80));
+
+      final customPaintFinder = find.byKey(const ValueKey('dynamic-notification-shape'));
+      expect(customPaintFinder, findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpAndSettle();
+    });
   });
 }

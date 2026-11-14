@@ -482,8 +482,14 @@ class AndroidCutoutGeometryProvider {
   /// and returns a resolved [NotchGeometry].
   Future<NotchGeometry?> load({
     required MediaQueryData mediaQuery,
+    bool forceRefresh = false,
   }) async {
-    if (_cached != null) return _cached;
+    if (!forceRefresh &&
+        _cached != null &&
+        _cached!.screenSize == mediaQuery.size &&
+        _cached!.devicePixelRatio == mediaQuery.devicePixelRatio) {
+      return _cached;
+    }
     if (_fetching) return null;
     _fetching = true;
     try {
@@ -521,40 +527,56 @@ class AndroidCutoutGeometryProvider {
       final dpr =
           mediaQuery.devicePixelRatio > 0 ? mediaQuery.devicePixelRatio : 1.0;
       final hasPath = res['hasPath'] as bool? ?? false;
-      final Rect bounds;
-      final NotchGeometrySource source;
+      Rect? resolvedBounds;
+      NotchGeometrySource source = NotchGeometrySource.displayFeature;
 
+      // 1. Prefer and validate native cutoutPath on API 31+
       if (hasPath && res.containsKey('pathLeft')) {
-        // Physical coordinates from DisplayCutout.getCutoutPath() (API 31+)
         final pLeft = (res['pathLeft'] as num).toDouble();
         final pTop = (res['pathTop'] as num).toDouble();
         final pRight = (res['pathRight'] as num).toDouble();
         final pBottom = (res['pathBottom'] as num).toDouble();
-        bounds =
+        final candidate =
             Rect.fromLTRB(pLeft / dpr, pTop / dpr, pRight / dpr, pBottom / dpr);
-        source = NotchGeometrySource.nativePath;
-      } else if (res.containsKey('boundLeft')) {
-        // Physical coordinates from DisplayCutout.getBoundingRects() (API 28+)
+        if (candidate.isFinite &&
+            !candidate.isEmpty &&
+            candidate.width > 0 &&
+            candidate.height > 0) {
+          resolvedBounds = candidate;
+          source = NotchGeometrySource.nativePath;
+        }
+      }
+
+      // 2. Fall back to standard DisplayCutout boundingRects (API 28+)
+      if (resolvedBounds == null && res.containsKey('boundLeft')) {
         final bLeft = (res['boundLeft'] as num).toDouble();
         final bTop = (res['boundTop'] as num).toDouble();
         final bRight = (res['boundRight'] as num).toDouble();
         final bBottom = (res['boundBottom'] as num).toDouble();
-        bounds =
+        final candidate =
             Rect.fromLTRB(bLeft / dpr, bTop / dpr, bRight / dpr, bBottom / dpr);
-        source = NotchGeometrySource.displayFeature;
-      } else {
+        if (candidate.isFinite &&
+            !candidate.isEmpty &&
+            candidate.width > 0 &&
+            candidate.height > 0) {
+          resolvedBounds = candidate;
+          source = NotchGeometrySource.displayFeature;
+        }
+      }
+
+      if (resolvedBounds == null) {
         return null;
       }
 
-      final shape = NotchGeometryDetector._classifyShape(bounds);
+      final shape = NotchGeometryDetector._classifyShape(resolvedBounds);
 
       _cached = NotchGeometry(
-        bounds: bounds,
-        center: bounds.center,
-        width: bounds.width,
-        height: bounds.height,
-        top: bounds.top,
-        bottom: bounds.bottom,
+        bounds: resolvedBounds,
+        center: resolvedBounds.center,
+        width: resolvedBounds.width,
+        height: resolvedBounds.height,
+        top: resolvedBounds.top,
+        bottom: resolvedBounds.bottom,
         screenSize: mediaQuery.size,
         insets: insets,
         source: source,

@@ -7,6 +7,13 @@ platforms:
   android:
   ios:
 
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: dev.dynamic_notifications
+        pluginClass: DynamicNotificationsPlugin
+
 screenshots:
   - description: A timed message notification in the Flutter example.
     path: doc/screenshots/default-card.png

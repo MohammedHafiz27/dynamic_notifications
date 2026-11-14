@@ -81,6 +81,16 @@ const _expand = Interval(0.40, 0.78, curve: Curves.easeInOutCubic);
 const _reveal = Interval(0.66, 0.96, curve: Curves.easeInOutCubic);
 const _tint = Interval(0.15, 0.43, curve: Curves.easeInOutCubic);
 
+/// Rendering engine used to animate the notification entrance and fluid silhouette.
+enum NotificationRenderMode {
+  /// Verified fluid morphology renderer (standard physics-based pendant drop).
+  standard,
+
+  /// Experimental liquid renderer incorporating continuous waist-and-shoulder
+  /// silhouette bridge dynamics and asymmetric absorption sweep from liquid_notch.
+  experimentalLiquid,
+}
+
 /// Places a notification above [child] without blocking touches outside it.
 ///
 /// Install once in MaterialApp.builder, outside the navigator.
@@ -93,6 +103,7 @@ class DynamicNotifications extends StatefulWidget {
     this.geometryOverride,
     this.debugShowGuides = false,
     this.progressOverride,
+    this.renderMode = NotificationRenderMode.standard,
   }) : assert(originLift >= 0 && originLift < double.infinity);
 
   final DynamicNotificationController controller;
@@ -115,6 +126,10 @@ class DynamicNotifications extends StatefulWidget {
   /// Used for frame-by-frame visual inspection and screenshot validation.
   /// Defaults to null (live animation).
   final double? progressOverride;
+
+  /// The rendering engine used to draw the notification silhouette and animation.
+  /// Defaults to [NotificationRenderMode.standard].
+  final NotificationRenderMode renderMode;
 
   @override
   State<DynamicNotifications> createState() => _DynamicNotificationsState();
@@ -139,6 +154,15 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
       duration: const Duration(milliseconds: 780),
       reverseDuration: const Duration(milliseconds: 640),
     )..addStatusListener(_onStatus);
+
+    if (widget.progressOverride != null) {
+      _current = const DynamicNotification(
+        title: 'Geometry Validation',
+        message: 'Visual Seam Inspection',
+        duration: null,
+      );
+      _animation.value = widget.progressOverride!.clamp(0.0, 1.0);
+    }
   }
 
   void _attachController() {
@@ -173,6 +197,18 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
     _reduceMotion = MediaQuery.disableAnimationsOf(context);
     if (_reduceMotion && _animation.isAnimating) {
       _animation.value = _exiting ? 0 : 1;
+    }
+
+    // Automatically and non-blockingly load native Android cutout geometry if on Android
+    // and no explicit override is provided.
+    if (Theme.of(context).platform == TargetPlatform.android &&
+        widget.geometryOverride == null) {
+      final mq = MediaQuery.of(context);
+      AndroidCutoutGeometryProvider.instance.load(mediaQuery: mq).then((geo) {
+        if (mounted && geo != null) {
+          setState(() {});
+        }
+      });
     }
   }
 
@@ -452,6 +488,8 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
                         compact: compact,
                         geometry: geometry,
                         debugShowGuides: debugShowGuides,
+                        renderMode: widget.renderMode,
+                        isExiting: _exiting,
                       ),
                     ),
                   ),
@@ -496,6 +534,8 @@ class _NotificationPainter extends CustomPainter {
     required this.compact,
     this.geometry,
     this.debugShowGuides = false,
+    this.renderMode = NotificationRenderMode.standard,
+    this.isExiting = false,
   });
 
   final double progress;
@@ -508,6 +548,8 @@ class _NotificationPainter extends CustomPainter {
   final bool compact;
   final NotchGeometry? geometry;
   final bool debugShowGuides;
+  final NotificationRenderMode renderMode;
+  final bool isExiting;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -607,105 +649,217 @@ class _NotificationPainter extends CustomPainter {
     double? tailLeft;
     double? tailRight;
 
-    if (!compact && rect.bottom > 0 && neckOpacity > 0) {
-      final join = math.max(0.0, centerY + height * 0.12);
-      final neckSpan = width / 2;
+    if (renderMode == NotificationRenderMode.standard) {
+      if (!compact && rect.bottom > 0 && neckOpacity > 0) {
+        final join = math.max(0.0, centerY + height * 0.12);
+        final neckSpan = width / 2;
 
-      // Contact half-width at the aperture is bounded by physical cutout dimensions
+        // Contact half-width at the aperture is bounded by physical cutout dimensions
+        final cutoutHalfWidth = (geometry?.width != null && geometry!.width > 0)
+            ? geometry!.width / 2
+            : 16.0;
+        final maxContactRadius = isPunchHole
+            ? math.min(16.0, math.max(10.0, cutoutHalfWidth))
+            : math.min(20.0, math.max(12.0, cutoutHalfWidth));
+
+        final rTop = math.min(neckSpan * 0.95, maxContactRadius) * neckOpacity;
+        final hNeck = math.max(0.0, join - yTop);
+
+        if (rTop > 0 && hNeck > 0) {
+          tailLeft = centerX - rTop;
+          tailRight = centerX + rTop;
+
+          // Waist position and pinched radius under gravity tension
+          final yWaist = yTop + hNeck * 0.40;
+          final pinchFactor = 0.42 + 0.38 * (1.0 - fall);
+          final rWaist = rTop * pinchFactor;
+
+          // Merge radius at the junction with the drop body
+          final rJoin =
+              math.min(neckSpan * 0.88, rTop + (neckSpan - rTop) * 0.45);
+
+          final tail = Path();
+          // Start at top-left contact point
+          tail.moveTo(centerX - rTop, yTop);
+
+          // Top arc (dome arch into the circular punch hole) or flat line across notch
+          if (hasCutout && domeArch > 0) {
+            tail.cubicTo(
+              centerX - rTop * 0.5,
+              yTop - domeArch * 0.85,
+              centerX + rTop * 0.5,
+              yTop - domeArch * 0.85,
+              centerX + rTop,
+              yTop,
+            );
+          } else {
+            tail.lineTo(centerX + rTop, yTop);
+          }
+
+          // Right flank: vertical tangent at top contact prevents sharp horizontal ears
+          tail.cubicTo(
+            centerX + rTop,
+            yTop + (yWaist - yTop) * 0.45,
+            centerX + rWaist,
+            yWaist - (yWaist - yTop) * 0.35,
+            centerX + rWaist,
+            yWaist,
+          );
+          tail.cubicTo(
+            centerX + rWaist,
+            yWaist + (join - yWaist) * 0.35,
+            centerX + rJoin * 0.90,
+            join - (join - yWaist) * 0.35,
+            centerX + rJoin,
+            join,
+          );
+
+          // Bottom connection inside the drop body
+          tail.lineTo(centerX - rJoin, join);
+
+          // Left flank: from body join up to waist, then to top-left contact
+          tail.cubicTo(
+            centerX - rJoin * 0.90,
+            join - (join - yWaist) * 0.35,
+            centerX - rWaist,
+            yWaist + (join - yWaist) * 0.35,
+            centerX - rWaist,
+            yWaist,
+          );
+          tail.cubicTo(
+            centerX - rWaist,
+            yWaist - (yWaist - yTop) * 0.35,
+            centerX - rTop,
+            yTop + (yWaist - yTop) * 0.45,
+            centerX - rTop,
+            yTop,
+          );
+
+          tail.close();
+          path = Path.combine(PathOperation.union, path, tail);
+
+          // Keep the attachment dark while the body lightens away from the edge.
+          paint.shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color.lerp(bodyColor, Colors.black, neckOpacity)!,
+              bodyColor,
+            ],
+          ).createShader(
+            Rect.fromLTRB(0, yTop - domeArch, 1, math.max(join, 1)),
+          );
+        }
+      }
+    } else {
+      // Experimental Liquid Renderer (inspired by liquid_notch silhouette bridge & absorption sweep)
       final cutoutHalfWidth = (geometry?.width != null && geometry!.width > 0)
           ? geometry!.width / 2
           : 16.0;
       final maxContactRadius = isPunchHole
           ? math.min(16.0, math.max(10.0, cutoutHalfWidth))
-          : math.min(20.0, math.max(12.0, cutoutHalfWidth));
+          : math.min(22.0, math.max(12.0, cutoutHalfWidth));
 
-      final rTop = math.min(neckSpan * 0.95, maxContactRadius) * neckOpacity;
-      final hNeck = math.max(0.0, join - yTop);
+      final bool showBridge;
+      final double bridgeOpacity;
+      final double shoulder;
+      final double waist;
+      final double attach;
+      final double join = math.max(0.0, centerY + height * 0.16);
 
-      if (rTop > 0 && hNeck > 0) {
-        tailLeft = centerX - rTop;
-        tailRight = centerX + rTop;
-
-        // Waist position and pinched radius under gravity tension
-        final yWaist = yTop + hNeck * 0.40;
-        final pinchFactor = 0.42 + 0.38 * (1.0 - fall);
-        final rWaist = rTop * pinchFactor;
-
-        // Merge radius at the junction with the drop body
-        final rJoin =
-            math.min(neckSpan * 0.88, rTop + (neckSpan - rTop) * 0.45);
-
-        final tail = Path();
-        // Start at top-left contact point
-        tail.moveTo(centerX - rTop, yTop);
-
-        // Top arc (dome arch into the circular punch hole) or flat line across notch
-        if (hasCutout && domeArch > 0) {
-          tail.cubicTo(
-            centerX - rTop * 0.5,
-            yTop - domeArch * 0.85,
-            centerX + rTop * 0.5,
-            yTop - domeArch * 0.85,
-            centerX + rTop,
-            yTop,
-          );
+      if (!compact && rect.bottom > 0) {
+        if (!isExiting && progress <= 0.42) {
+          showBridge = true;
+          bridgeOpacity = (1.0 - (progress / 0.42)).clamp(0.0, 1.0);
+          shoulder = math.min(maxContactRadius, 24.0) * (0.65 + 0.35 * bridgeOpacity);
+          waist = math.max(2.5, shoulder * 0.44 * math.pow(bridgeOpacity, 0.8));
+          attach = math.min(width * 0.44, shoulder + 10.0);
+        } else if (isExiting && progress <= 0.65) {
+          showBridge = true;
+          final suction = math.sin(math.pi * (1.0 - progress / 0.65).clamp(0.0, 1.0));
+          bridgeOpacity = (1.0 - (progress / 0.65)).clamp(0.0, 1.0);
+          shoulder = math.min(maxContactRadius * 1.2, 28.0) * (0.5 + 0.5 * suction);
+          waist = math.max(3.0, shoulder * 0.55 * suction);
+          attach = math.min(width * 0.46, shoulder + 12.0);
         } else {
-          tail.lineTo(centerX + rTop, yTop);
+          showBridge = false;
+          bridgeOpacity = 0.0;
+          shoulder = 0.0;
+          waist = 0.0;
+          attach = 0.0;
         }
 
-        // Right flank: vertical tangent at top contact prevents sharp horizontal ears
-        tail.cubicTo(
-          centerX + rTop,
-          yTop + (yWaist - yTop) * 0.45,
-          centerX + rWaist,
-          yWaist - (yWaist - yTop) * 0.35,
-          centerX + rWaist,
-          yWaist,
-        );
-        tail.cubicTo(
-          centerX + rWaist,
-          yWaist + (join - yWaist) * 0.35,
-          centerX + rJoin * 0.90,
-          join - (join - yWaist) * 0.35,
-          centerX + rJoin,
-          join,
-        );
+        if (showBridge && shoulder > 0 && join > yTop) {
+          tailLeft = centerX - math.max(shoulder, attach);
+          tailRight = centerX + math.max(shoulder, attach);
+          final waistY = lerpDouble(yTop, rect.top, 0.58)!;
 
-        // Bottom connection inside the drop body
-        tail.lineTo(centerX - rJoin, join);
+          final bridge = Path();
+          bridge.moveTo(centerX - shoulder, yTop);
 
-        // Left flank: from body join up to waist, then to top-left contact
-        tail.cubicTo(
-          centerX - rJoin * 0.90,
-          join - (join - yWaist) * 0.35,
-          centerX - rWaist,
-          yWaist + (join - yWaist) * 0.35,
-          centerX - rWaist,
-          yWaist,
-        );
-        tail.cubicTo(
-          centerX - rWaist,
-          yWaist - (yWaist - yTop) * 0.35,
-          centerX - rTop,
-          yTop + (yWaist - yTop) * 0.45,
-          centerX - rTop,
-          yTop,
-        );
+          if (hasCutout && domeArch > 0) {
+            bridge.cubicTo(
+              centerX - shoulder * 0.5,
+              yTop - domeArch * 0.85,
+              centerX + shoulder * 0.5,
+              yTop - domeArch * 0.85,
+              centerX + shoulder,
+              yTop,
+            );
+          } else {
+            bridge.lineTo(centerX + shoulder, yTop);
+          }
 
-        tail.close();
-        path = Path.combine(PathOperation.union, path, tail);
+          // Concave cubic shoulder down to waist
+          bridge.cubicTo(
+            centerX + shoulder * 0.43,
+            yTop,
+            centerX + waist,
+            waistY - 4,
+            centerX + waist,
+            waistY,
+          );
+          // Waist to target attachment
+          bridge.cubicTo(
+            centerX + waist,
+            waistY + 6,
+            centerX + attach,
+            join - 6,
+            centerX + attach,
+            join,
+          );
+          bridge.lineTo(centerX - attach, join);
+          bridge.cubicTo(
+            centerX - attach,
+            join - 6,
+            centerX - waist,
+            waistY + 6,
+            centerX - waist,
+            waistY,
+          );
+          bridge.cubicTo(
+            centerX - waist,
+            waistY - 4,
+            centerX - shoulder * 0.43,
+            yTop,
+            centerX - shoulder,
+            yTop,
+          );
+          bridge.close();
 
-        // Keep the attachment dark while the body lightens away from the edge.
-        paint.shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color.lerp(bodyColor, Colors.black, neckOpacity)!,
-            bodyColor,
-          ],
-        ).createShader(
-          Rect.fromLTRB(0, yTop - domeArch, 1, math.max(join, 1)),
-        );
+          path = Path.combine(PathOperation.union, path, bridge);
+
+          paint.shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color.lerp(bodyColor, Colors.black, bridgeOpacity)!,
+              bodyColor,
+            ],
+          ).createShader(
+            Rect.fromLTRB(0, yTop - domeArch, 1, math.max(join, 1)),
+          );
+        }
       }
     }
 
