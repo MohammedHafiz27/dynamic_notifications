@@ -50,6 +50,7 @@ void main() {
             key: repaintKey,
             child: MediaQuery(
               data: const MediaQueryData(
+                size: testSize,
                 viewPadding: EdgeInsets.only(top: 44, bottom: 20),
                 displayFeatures: [
                   DisplayFeature(
@@ -142,6 +143,157 @@ void main() {
     await gesture.moveBy(const Offset(0, 80)); // back to 0
     await tester.pump();
     await saveScreenshot(repaintKey, 'morph_reversal_recovery.png');
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('Capture visual evidence for interactive reverse morph into Dynamic Island', (
+    tester,
+  ) async {
+    const testSize = Size(393, 852);
+    tester.view.physicalSize = const Size(1179, 2556);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final outDir = Directory('doc/screenshots/morph/island');
+    if (!outDir.existsSync()) {
+      outDir.createSync(recursive: true);
+    }
+
+    Future<void> saveScreenshot(GlobalKey repaintKey, String filename) async {
+      final boundary =
+          repaintKey.currentContext!.findRenderObject()!
+              as RenderRepaintBoundary;
+      final ui.Image image = await tester.runAsync(
+        () => boundary.toImage(pixelRatio: 3.0),
+      ) as ui.Image;
+      final byteData = await tester.runAsync(
+        () => image.toByteData(format: ui.ImageByteFormat.png),
+      );
+      final file = File('doc/screenshots/morph/island/$filename');
+      file.writeAsBytesSync(byteData!.buffer.asUint8List());
+    }
+
+    final repaintKey = GlobalKey();
+    final controller = DynamicNotificationController();
+
+    const cutoutBounds = Rect.fromLTWH(134.5, 11.0, 124.0, 37.0);
+    const testGeometry = NotchGeometry(
+      bounds: cutoutBounds,
+      center: Offset(196.5, 29.5),
+      width: 124.0,
+      height: 37.0,
+      top: 11.0,
+      bottom: 48.0,
+      screenSize: testSize,
+      insets: EdgeInsets.only(top: 54.0),
+      source: NotchGeometrySource.displayFeature,
+      confidence: NotchGeometryConfidence.exact,
+      shape: NotchShape.pill,
+      hasCutout: true,
+      devicePixelRatio: 3.0,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(
+          backgroundColor: const Color(0xFFF1F5F9),
+          body: RepaintBoundary(
+            key: repaintKey,
+            child: MediaQuery(
+              data: const MediaQueryData(
+                size: testSize,
+                viewPadding: EdgeInsets.only(top: 54, bottom: 34),
+                displayFeatures: [
+                  DisplayFeature(
+                    bounds: cutoutBounds,
+                    type: DisplayFeatureType.cutout,
+                    state: DisplayFeatureState.unknown,
+                  ),
+                ],
+              ),
+              child: SizedBox(
+                width: testSize.width,
+                height: testSize.height,
+                child: DynamicNotifications(
+                  controller: controller,
+                  geometryOverride: testGeometry,
+                  child: Stack(
+                    children: [
+                      // Simulated Dynamic Island hardware pill
+                      Positioned(
+                        top: 11,
+                        left: 134.5,
+                        child: Container(
+                          width: 124,
+                          height: 37,
+                          decoration: BoxDecoration(
+                            color: Colors.black,
+                            borderRadius: BorderRadius.circular(18.5),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        top: 16,
+                        left: 28,
+                        child: Text(
+                          '9:41',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black.withValues(alpha: 0.8),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    controller.show(
+      const DynamicNotification(
+        title: 'Incoming Call',
+        message: 'Sarah Jenkins is calling...',
+        duration: null,
+      ),
+    );
+
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    // 1. Progress 0.0 - Fully Expanded Resting State
+    await saveScreenshot(repaintKey, 'island_0_expanded.png');
+
+    // 2. Progress 0.25 - Small upward drag (-20dp)
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('Incoming Call')),
+    );
+    await gesture.moveBy(const Offset(0, -20));
+    await tester.pump();
+    await saveScreenshot(repaintKey, 'island_25_contracting.png');
+
+    // 3. Progress 0.50 - Medium upward drag (-40dp, pendant liquid droplet)
+    await gesture.moveBy(const Offset(0, -20));
+    await tester.pump();
+    await saveScreenshot(repaintKey, 'island_50_droplet.png');
+
+    // 4. Progress 0.75 - Near-complete upward drag (-60dp, liquid neck retraction)
+    await gesture.moveBy(const Offset(0, -20));
+    await tester.pump();
+    await saveScreenshot(repaintKey, 'island_75_neck.png');
+
+    // 5. Progress 1.00 - Maximum upward drag (-80dp, fully absorbed into Dynamic Island)
+    await gesture.moveBy(const Offset(0, -20));
+    await tester.pump();
+    await saveScreenshot(repaintKey, 'island_100_absorbed.png');
 
     await gesture.up();
     await tester.pumpAndSettle();

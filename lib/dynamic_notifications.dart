@@ -75,6 +75,9 @@ class DynamicNotificationController {
   /// normalized from 0.0 (fully expanded resting card) to 1.0 (fully collapsed into notch).
   double get morphProgress => _host?._morphProgress ?? 0.0;
 
+  /// The active notification, or null if no notification is currently being presented.
+  DynamicNotification? get currentNotification => _host?._current;
+
   /// Shows [notification] once the host is mounted.
   ///
   /// While another card exits, the most recent call replaces the pending card.
@@ -226,6 +229,11 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
 
   DynamicNotification? _current;
   DynamicNotification? _pending;
+  int _generation = 0;
+  int _springGeneration = 0;
+  bool _entranceComplete = false;
+  double _exitDrag = 0.0;
+  double _exitStartProgress = 1.0;
   Timer? _timer;
   DateTime? _timerStart;
   Duration? _timerRemaining;
@@ -259,8 +267,19 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
       vsync: this,
       duration: widget.gestureConfig.springBackDuration,
     )..addListener(() {
-        setState(() => _drag = _springAnimation.value);
+        if (_springGeneration != _generation) return;
+        setState(() {
+          _drag = _springAnimation.value;
+          if (_drag <= 0) {
+            final maxUp = widget.gestureConfig.maxUpwardDrag.abs();
+            _animation.value =
+                maxUp > 0 ? (1.0 + _drag / maxUp).clamp(0.0, 1.0) : 1.0;
+          } else {
+            _animation.value = 1.0;
+          }
+        });
       })..addStatusListener((status) {
+        if (_springGeneration != _generation) return;
         if (status == AnimationStatus.completed) {
           if (_interactionState == NotificationInteractionState.dismissing) {
             _finishExit();
@@ -270,6 +289,7 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
             _drag = 0.0;
             _dragBaseY = 0.0;
             _isDragging = false;
+            _animation.value = 1.0;
             _interactionState = NotificationInteractionState.idle;
           });
           _resumeTimer();
@@ -341,60 +361,82 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
   void _show(DynamicNotification notification) {
     if (_current != null) {
       _pending = notification;
-      _exit();
+      if (!_exiting) {
+        _exit();
+      }
       return;
     }
-    _activePointerId = null;
-    _pointerDown = false;
-    _springController.stop();
+    _startEntrance(notification);
+  }
+
+  void _startEntrance(DynamicNotification notification) {
+    _generation++;
+
     _timer?.cancel();
     _timer = null;
     _timerStart = null;
     _timerRemaining = null;
+
+    _springController.stop();
+    _animation.stop();
+
+    _activePointerId = null;
+    _pointerDown = false;
     _pointerDownTime = null;
     _pointerDownPosition = null;
     _pointerMoved = false;
     _isDragging = false;
     _velocityTracker = null;
-    _dragStartY = 0;
-    _dragBaseY = 0;
+    _dragStartY = 0.0;
+    _dragBaseY = 0.0;
+    _drag = 0.0;
+    _exitDrag = 0.0;
+    _exitStartProgress = 1.0;
+    _exiting = false;
+    _entranceComplete = false;
+    _interactionState = NotificationInteractionState.idle;
+
+    _animation.value = 0.0;
+
     setState(() {
       _current = notification;
-      _exiting = false;
-      _drag = 0;
-      _interactionState = NotificationInteractionState.idle;
     });
+
     if (_reduceMotion) {
-      _animation.value = 1;
+      _animation.value = 1.0;
     } else {
-      _animation.forward();
+      _animation.forward(from: 0.0);
     }
   }
 
   void _exit() {
     if (_current == null || _exiting) return;
-    if (_drag < 0) {
-      _animateReverseMorphDismissal();
-      return;
-    }
     _activePointerId = null;
     _pointerDown = false;
     _timer?.cancel();
     _timer = null;
+    _timerStart = null;
+    _timerRemaining = null;
     _springController.stop();
+
+    _exitDrag = _drag;
+    _exitStartProgress = _animation.value > 0.0 ? _animation.value : 1.0;
+
     setState(() {
       _exiting = true;
       if (_interactionState != NotificationInteractionState.opening) {
         _interactionState = NotificationInteractionState.dismissing;
       }
     });
+
     if (_animation.value == 0) {
       _animation.stop();
       _finishExit();
     } else if (_reduceMotion) {
-      _animation.value = 0;
+      _animation.value = 0.0;
+      _finishExit();
     } else {
-      _animation.reverse();
+      _animation.reverse(from: _animation.value);
     }
   }
 
@@ -419,15 +461,24 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
   }
 
   void _onStatus(AnimationStatus status) {
-    if (status == AnimationStatus.completed && !_exiting) {
+    final gen = _generation;
+    if (status == AnimationStatus.completed && !_exiting && !_entranceComplete) {
+      _entranceComplete = true;
+      if (gen != _generation) return;
       final duration = _current?.duration;
       if (duration != null) {
         _timerRemaining = duration;
         _timerStart = clock.now();
-        _timer = Timer(duration, _onTimerExpired);
+        _timer = Timer(duration, () {
+          if (gen != _generation) return;
+          _onTimerExpired();
+        });
       }
     }
-    if (status == AnimationStatus.dismissed && _exiting) _finishExit();
+    if (status == AnimationStatus.dismissed && _exiting) {
+      if (gen != _generation) return;
+      _finishExit();
+    }
   }
 
   void _finishExit() {
@@ -441,67 +492,36 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
     _activePointerId = null;
     _pointerDown = false;
     _velocityTracker = null;
-    _dragStartY = 0;
-    _dragBaseY = 0;
+    _dragStartY = 0.0;
+    _dragBaseY = 0.0;
     _springController.stop();
-    setState(() {
-      _current = null;
-      _exiting = false;
-      _drag = 0;
-      _interactionState = NotificationInteractionState.idle;
-      _pointerDownTime = null;
-      _pointerDownPosition = null;
-      _pointerMoved = false;
-    });
-    if (next != null) _show(next);
+    _animation.stop();
+    _current = null;
+    _exiting = false;
+    _entranceComplete = false;
+    _drag = 0.0;
+    _exitDrag = 0.0;
+    _exitStartProgress = 1.0;
+    _interactionState = NotificationInteractionState.idle;
+    _pointerDownTime = null;
+    _pointerDownPosition = null;
+    _pointerMoved = false;
+
+    if (next != null) {
+      _startEntrance(next);
+    } else {
+      setState(() {});
+    }
   }
 
   double get _morphProgress {
     if (_current == null) return 0.0;
-    if (_exiting && _drag == 0) {
-      return (1.0 - _animation.value).clamp(0.0, 1.0);
-    }
-    if (_drag < 0) {
-      final maxUp = widget.gestureConfig.maxUpwardDrag.abs();
-      if (maxUp <= 0) return 0.0;
-      return (-_drag / maxUp).clamp(0.0, 1.0);
-    }
-    return 0.0;
-  }
-
-  void _animateReverseMorphDismissal() {
-    if (_current == null || _exiting) return;
-    _activePointerId = null;
-    _pointerDown = false;
-    _timer?.cancel();
-    _timer = null;
-    _springController.stop();
-
-    setState(() {
-      _exiting = true;
-      _interactionState = NotificationInteractionState.dismissing;
-    });
-
-    final targetDrag = widget.gestureConfig.maxUpwardDrag;
-    if (_drag <= targetDrag || _reduceMotion) {
-      _finishExit();
-      return;
-    }
-
-    _springAnimation = Tween<double>(
-      begin: _drag,
-      end: targetDrag,
-    ).animate(
-      CurvedAnimation(
-        parent: _springController,
-        curve: Curves.easeInQuad,
-      ),
-    );
-    _springController.forward(from: 0.0);
+    return (1.0 - _animation.value).clamp(0.0, 1.0);
   }
 
   void _springBack() {
-    if (_drag == 0) {
+    _springGeneration = _generation;
+    if (_drag == 0.0 && _animation.value == 1.0) {
       setState(() => _interactionState = NotificationInteractionState.idle);
       _resumeTimer();
       return;
@@ -586,9 +606,18 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
         widget.gestureConfig.maxUpwardDrag,
         widget.gestureConfig.maxDownwardDrag,
       );
+      _drag = newDrag;
+      if (_drag <= 0) {
+        final maxUp = widget.gestureConfig.maxUpwardDrag.abs();
+        final dragProgress = maxUp > 0
+            ? (1.0 + _drag / maxUp).clamp(0.0, 1.0)
+            : 1.0;
+        _animation.value = dragProgress;
+      } else {
+        _animation.value = 1.0;
+      }
       setState(() {
         _interactionState = NotificationInteractionState.dragging;
-        _drag = newDrag;
       });
     }
   }
@@ -609,7 +638,7 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
       // Upward dismissal: crossed threshold upward, or flung upward while displaced upward
       if (_drag <= config.dismissThreshold ||
           (_drag <= 0 && velocity <= config.dismissVelocityThreshold)) {
-        _animateReverseMorphDismissal();
+        _exit();
         return;
       }
 
@@ -638,7 +667,7 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
     _isDragging = false;
     _velocityTracker = null;
     if (_exiting) return;
-    if (_drag != 0) {
+    if (_drag != 0 || _animation.value < 1.0) {
       _springBack();
     } else {
       setState(() => _interactionState = NotificationInteractionState.idle);
@@ -859,19 +888,21 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
           builder: (context, child) {
             final progress = widget.progressOverride ?? _animation.value;
             final reveal = compact ? progress : _reveal.transform(progress);
-            final interactive = !_exiting && reveal == 1;
-            final effectiveDrag = compact
-                ? 0.0
-                : (_drag < 0
-                    ? _drag
-                    : (_exiting ? _drag * _animation.value : _drag));
+            final double effectiveDrag;
+            if (compact) {
+              effectiveDrag = 0.0;
+            } else if (_exiting) {
+              effectiveDrag = _exitStartProgress > 0.0
+                  ? _exitDrag * (_animation.value / _exitStartProgress)
+                  : 0.0;
+            } else {
+              effectiveDrag = _drag;
+            }
             final offset = Offset(0, effectiveDrag);
             final morphProgress = _morphProgress;
-            final contentOpacity =
-                reveal * math.max(0.0, 1.0 - morphProgress * 2.35);
-            final contentScale = lerpDouble(0.94, 1.0, reveal)! *
-                lerpDouble(1.0, 0.72, morphProgress)!;
-            final isInteractionLocked = !interactive || morphProgress > 0.35;
+            final contentOpacity = reveal;
+            final contentScale = lerpDouble(0.94, 1.0, reveal)!;
+            final isInteractionLocked = _exiting || (!_entranceComplete && reveal < 1.0) || (_interactionState != NotificationInteractionState.returning && morphProgress > 0.35);
             return Stack(
               clipBehavior: Clip.none,
               children: [
@@ -1010,7 +1041,7 @@ class _NotificationPainter extends CustomPainter {
     ).transform(progress);
 
     final double eggFactor;
-    if (compact || isExiting || progress > 0.44) {
+    if (compact || progress > 0.44) {
       eggFactor = 0.0;
     } else if (progress <= 0.28) {
       eggFactor = const Interval(
@@ -1035,71 +1066,24 @@ class _NotificationPainter extends CustomPainter {
         0.28 *
             (1.0 - expand) *
             math.sin(
-              math.pi * (progress / (isExiting ? 0.42 : 0.36)).clamp(0.0, 1.0),
+              math.pi * (progress / 0.36).clamp(0.0, 1.0),
             );
     final dropSize =
         math.min(48.0, math.min(size.width, cardHeight)) *
         (compact ? 1.0 : (0.32 + 0.68 * grow));
 
-    final double width;
-    final double height;
-    final double centerX;
-    final double centerY;
-    final double corner;
-
-    if (morphProgress > 0) {
-      final u = morphProgress.clamp(0.0, 1.0);
-      final kw = Curves.easeInOutCubic.transform(u);
-      final kh = Curves.easeInOut.transform(u);
-      final kx = Curves.easeInOut.transform(u);
-      final ky = Curves.easeInQuad.transform(u);
-      final kc = Curves.easeIn.transform(u);
-
-      final double targetWidth;
-      final double targetHeight;
-      if (isPunchHole) {
-        targetWidth = math.max(20.0, cutoutRadius * 2.0);
-        targetHeight = math.max(20.0, cutoutRadius * 2.0);
-      } else if (isPill) {
-        targetWidth = math.max(36.0, geometry!.width * 0.95);
-        targetHeight = math.max(20.0, geometry!.height);
-      } else if (hasCutout) {
-        targetWidth = math.max(28.0, geometry!.width * 0.85);
-        targetHeight = math.max(18.0, geometry!.height);
-      } else {
-        targetWidth = 36.0;
-        targetHeight = 18.0;
-      }
-      final targetCorner = targetHeight / 2.0;
-      final targetCenterX = size.width / 2 + anchorOffset;
-      final targetCenterY = hasCutout
-          ? (cutoutCenterYLocal - deltaOverlap * 0.5)
-          : (-anchorTop * 0.5);
-
-      final cardCorner = math.min(
-        borderRadius ?? (cardHeight / 2),
-        cardHeight / 2,
-      );
-
-      width = lerpDouble(size.width, targetWidth, kw)!;
-      height = lerpDouble(cardHeight, targetHeight, kh)!;
-      centerX = lerpDouble(size.width / 2, targetCenterX, kx)!;
-      centerY = lerpDouble(landing + cardHeight / 2 + drag, targetCenterY, ky)!;
-      corner = lerpDouble(cardCorner, targetCorner, kc)!;
-    } else {
-      width = lerpDouble(dropSize / stretch, size.width, expand)!;
-      height = lerpDouble(dropSize * stretch, cardHeight, expand)!;
-      centerY = compact
-          ? cardHeight / 2
-          : lerpDouble(-12, landing + cardHeight / 2, fall)! + drag;
-      centerX = size.width / 2 + anchorOffset * (1.0 - expand);
-      final radius = math.min(width, height) / 2;
-      final cardCorner = math.min(
-        borderRadius ?? (cardHeight / 2),
-        cardHeight / 2,
-      );
-      corner = lerpDouble(radius, cardCorner, expand)!;
-    }
+    final width = lerpDouble(dropSize / stretch, size.width, expand)!;
+    final height = lerpDouble(dropSize * stretch, cardHeight, expand)!;
+    final centerY = compact
+        ? cardHeight / 2
+        : lerpDouble(-12, landing + cardHeight / 2, fall)! + drag;
+    final centerX = size.width / 2 + anchorOffset * (1.0 - expand);
+    final radius = math.min(width, height) / 2;
+    final cardCorner = math.min(
+      borderRadius ?? (cardHeight / 2),
+      cardHeight / 2,
+    );
+    final corner = lerpDouble(radius, cardCorner, expand)!;
 
     final rect = Rect.fromCenter(
       center: Offset(centerX, centerY),
@@ -1120,8 +1104,8 @@ class _NotificationPainter extends CustomPainter {
 
     Path path;
 
-    final isAttachedEntrance = !compact && !isExiting && progress <= 0.28;
-    if (isAttachedEntrance) {
+    final isAttached = !compact && progress <= 0.28;
+    if (isAttached) {
       final u = (progress / 0.28).clamp(0.0, 1.0);
       final shoulder =
           maxContactRadius *
@@ -1406,170 +1390,11 @@ class _NotificationPainter extends CustomPainter {
           ..close();
       }
 
-      // Interactive reverse-morph liquid suction bridge retracting into camera cutout / notch
-      if (hasCutout && morphProgress >= 0.28 && rect.bottom > yApex) {
-        final u = ((morphProgress - 0.28) / 0.72).clamp(0.0, 1.0);
-        final suction = math.sin(math.pi * u);
-        final yContact = math.max(-anchorTop, yApex);
-        final join = math.max(yContact + 1.0, rect.top + height * 0.25);
-
-        if (join > yContact) {
-          final shoulder = math.min(maxContactRadius, width * 0.48) *
-              lerpDouble(0.35, 1.0, suction)!;
-          final waist = shoulder * lerpDouble(0.62, 0.30, u)!;
-          final attach = math.min(width * 0.46, shoulder + 8.0 * suction);
-          final waistY = yContact + (join - yContact) * 0.45;
-
-          if (shoulder > 1.0 && waist > 0.5) {
-            tailLeft = centerX - math.max(shoulder, attach);
-            tailRight = centerX + math.max(shoulder, attach);
-            tailTopY = yContact;
-
-            final bridge = Path()
-              ..moveTo(centerX - shoulder, yContact)
-              ..lineTo(centerX + shoulder, yContact)
-              ..cubicTo(
-                centerX + shoulder - (shoulder - waist) * 0.18,
-                yContact + (waistY - yContact) * 0.40,
-                centerX + waist + (shoulder - waist) * 0.08,
-                waistY - math.min(4.0, (waistY - yContact) * 0.28),
-                centerX + waist,
-                waistY,
-              )
-              ..cubicTo(
-                centerX + waist,
-                waistY + (join - waistY) * 0.35,
-                centerX + attach * 0.92,
-                join - (join - waistY) * 0.35,
-                centerX + attach,
-                join,
-              )
-              ..lineTo(centerX - attach, join)
-              ..cubicTo(
-                centerX - attach * 0.92,
-                join - (join - waistY) * 0.35,
-                centerX - waist,
-                waistY + (join - waistY) * 0.35,
-                centerX - waist,
-                waistY,
-              )
-              ..cubicTo(
-                centerX - waist - (shoulder - waist) * 0.08,
-                waistY - math.min(4.0, (waistY - yContact) * 0.28),
-                centerX - shoulder + (shoulder - waist) * 0.18,
-                yContact + (waistY - yContact) * 0.40,
-                centerX - shoulder,
-                yContact,
-              )
-              ..close();
-
-            path = Path.combine(PathOperation.union, path, bridge);
-
-            if (bodyColor != Colors.black) {
-              final colorBlend = Curves.easeInOut.transform(
-                ((morphProgress - 0.28) / 0.72).clamp(0.0, 1.0),
-              );
-              paint.shader = LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black,
-                  Color.lerp(Colors.black, bodyColor, (1.0 - colorBlend) * 0.45)!,
-                  bodyColor,
-                ],
-                stops: const [0.0, 0.40, 1.0],
-              ).createShader(
-                Rect.fromLTRB(
-                  0,
-                  yContact,
-                  1,
-                  math.max(rect.bottom, yContact + 1.0),
-                ),
-              );
-            }
-          }
-        }
-      } else if (isExiting && progress <= 0.60 && rect.bottom > 0) {
-        final u = (progress / 0.60).clamp(0.0, 1.0);
-        final suction = math.sin(math.pi * u);
-        final bridgeOpacity = (1.0 - u).clamp(0.0, 1.0);
-        final shoulder =
-            math.min(maxContactRadius * 1.25, 26.0) * math.pow(suction, 0.7);
-        final waist = shoulder * 0.52 * math.pow(suction, 0.9);
-        final attach = math.min(width * 0.46, shoulder + 12.0 * suction);
-        final join = math.max(yApex + 2.0, rect.top + height * 0.22);
-        final yContact = math.max(-anchorTop, yApex);
-
-        if (shoulder > 0 && waist > 0 && join > yContact) {
-          tailLeft = centerX - math.max(shoulder, attach);
-          tailRight = centerX + math.max(shoulder, attach);
-          tailTopY = yContact;
-          final waistY = math.max(
-            yApex + 2.0,
-            lerpDouble(yApex, rect.top, 0.55)!,
-          );
-
-          final bridge = Path()
-            ..moveTo(centerX - shoulder, yContact)
-            ..lineTo(centerX + shoulder, yContact)
-            ..cubicTo(
-              centerX + shoulder - (shoulder - waist) * 0.18,
-              yContact + (waistY - yContact) * 0.40,
-              centerX + waist + (shoulder - waist) * 0.08,
-              waistY - math.min(4.0, (waistY - yContact) * 0.28),
-              centerX + waist,
-              waistY,
-            )
-            ..cubicTo(
-              centerX + waist,
-              waistY + (join - waistY) * 0.35,
-              centerX + attach * 0.92,
-              join - (join - waistY) * 0.35,
-              centerX + attach,
-              join,
-            )
-            ..lineTo(centerX - attach, join)
-            ..cubicTo(
-              centerX - attach * 0.92,
-              join - (join - waistY) * 0.35,
-              centerX - waist,
-              waistY + (join - waistY) * 0.35,
-              centerX - waist,
-              waistY,
-            )
-            ..cubicTo(
-              centerX - waist - (shoulder - waist) * 0.08,
-              waistY - math.min(4.0, (waistY - yContact) * 0.28),
-              centerX - shoulder + (shoulder - waist) * 0.18,
-              yContact + (waistY - yContact) * 0.40,
-              centerX - shoulder,
-              yContact,
-            )
-            ..close();
-
-          path = Path.combine(PathOperation.union, path, bridge);
-
-          if (bodyColor != Colors.black) {
-            paint.shader = LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Color.lerp(
-                  bodyColor,
-                  Colors.black,
-                  math.max(0.65, bridgeOpacity),
-                )!,
-                bodyColor,
-              ],
-            ).createShader(Rect.fromLTRB(0, yContact, 1, math.max(join, 1)));
-          }
-        }
-      }
     }
 
     // Meniscus tip remaining on the Dynamic Island aperture after detachment
     final bool showMeniscus =
-        !compact && !isExiting && isPill && progress > 0.28 && progress <= 0.40;
+        !compact && isPill && progress > 0.28 && progress <= 0.40;
     Path? meniscusPath;
     if (showMeniscus) {
       final recoil = ((progress - 0.28) / (0.40 - 0.28)).clamp(0.0, 1.0);
@@ -1638,15 +1463,12 @@ class _NotificationPainter extends CustomPainter {
     canvas.clipRect(
       Rect.fromLTRB(clipLeft, clipTop, clipRight, clipBottom),
     );
-    final shadowFactor =
-        (1.0 - Curves.easeIn.transform(morphProgress)).clamp(0.0, 1.0);
-    final shadowOpacity = (expand > 0
+    final shadowOpacity = expand > 0
         ? lerpDouble(0.20, 0.26, expand)!
         : (!compact && progress > 0.28
               ? 0.20 * ((progress - 0.28) / 0.08).clamp(0.0, 1.0)
-              : 0.0)) * shadowFactor;
-    final elevation =
-        (expand > 0 ? lerpDouble(8.0, 12.0, expand)! : 8.0) * shadowFactor;
+              : 0.0);
+    final elevation = expand > 0 ? lerpDouble(8.0, 12.0, expand)! : 8.0;
     if (shadowOpacity > 0) {
       canvas.drawShadow(
         path,

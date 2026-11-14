@@ -83,10 +83,7 @@ class _DemoAppState extends State<DemoApp> {
       title: 'Uploading files',
       message: '60% complete',
       duration: null,
-      style: const DynamicNotificationStyle(
-        backgroundColor: Color(0xFF242426),
-        borderRadius: 22,
-      ),
+      style: const DynamicNotificationStyle(backgroundColor: Color(0xFF242426), borderRadius: 22),
       contentBuilder: (context) => const Row(
         children: [
           Icon(Icons.cloud_upload_outlined, color: Color(0xFFFF636A)),
@@ -98,10 +95,7 @@ class _DemoAppState extends State<DemoApp> {
               children: [
                 Text(
                   'Uploading files',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                 ),
                 SizedBox(height: 8),
                 LinearProgressIndicator(
@@ -125,15 +119,13 @@ class _DemoAppState extends State<DemoApp> {
     final mq = MediaQuery.of(context);
     final stopwatch = Stopwatch()..start();
     try {
-      final res = await const MethodChannel(
-        'dynamic_notifications/android_geometry',
-      ).invokeMapMethod<String, dynamic>('getCutoutGeometry');
+      final res = await const MethodChannel('dynamic_notifications/android_geometry')
+          .invokeMapMethod<String, dynamic>('getCutoutGeometry');
       stopwatch.stop();
       if (!mounted) return;
       setState(() {
         _nativeData = res;
-        _benchmarkLatencyUs =
-            res?['latencyUs'] as int? ?? stopwatch.elapsedMicroseconds;
+        _benchmarkLatencyUs = res?['latencyUs'] as int? ?? stopwatch.elapsedMicroseconds;
       });
       final geo = await _androidProvider.load(mediaQuery: mq);
       if (mounted) {
@@ -148,35 +140,22 @@ class _DemoAppState extends State<DemoApp> {
     final mq = MediaQuery.of(context);
     final view = View.of(context);
     final dpr = mq.devicePixelRatio;
-    final insets = mq.viewPadding != EdgeInsets.zero
-        ? mq.viewPadding
-        : mq.padding;
+    final insets = mq.viewPadding != EdgeInsets.zero ? mq.viewPadding : mq.padding;
     final windowExtendsIntoCutout = insets.top > 0 && mq.size.height > 0;
     final anchorTop = activeGeometry.anchorTop;
     final anchorX = activeGeometry.anchorX;
     final hasCutout = activeGeometry.hasCutout;
     final maxOverlap = math.max(0.0, anchorTop);
     final yTop = hasCutout ? -math.min(2.5, maxOverlap) : 0.0;
-    final isPunchHole =
-        hasCutout && activeGeometry.shape == NotchShape.punchHole;
-    final domeArch = isPunchHole
-        ? math.min(2.0, math.max(0.0, maxOverlap + yTop))
-        : 0.0;
+    final isPunchHole = hasCutout && activeGeometry.shape == NotchShape.punchHole;
+    final domeArch = isPunchHole ? math.min(2.0, math.max(0.0, maxOverlap + yTop)) : 0.0;
     final topBoundaryGlobal = anchorTop + yTop - domeArch;
     final neckWidth = activeGeometry.width > 0 ? activeGeometry.width : 32.0;
 
-    debugPrint(
-      '╔════════════════════════════════════════════════════════════════════╗',
-    );
-    debugPrint(
-      '║                DYNAMIC NOTIFICATIONS DIAGNOSTIC LOG                ║',
-    );
-    debugPrint(
-      '╠════════════════════════════════════════════════════════════════════╣',
-    );
-    debugPrint(
-      '║ Device: ${Platform.operatingSystem} (${_nativeData?['deviceModel'] ?? 'Unknown'})',
-    );
+    debugPrint('╔════════════════════════════════════════════════════════════════════╗');
+    debugPrint('║                DYNAMIC NOTIFICATIONS DIAGNOSTIC LOG                ║');
+    debugPrint('╠════════════════════════════════════════════════════════════════════╣');
+    debugPrint('║ Device: ${Platform.operatingSystem} (${_nativeData?['deviceModel'] ?? 'Unknown'})');
     debugPrint(
       '║ Android API: ${_nativeData?['apiLevel'] ?? 'N/A'}, Target SDK: ${_nativeData?['targetSdk'] ?? 'N/A'}',
     );
@@ -190,12 +169,8 @@ class _DemoAppState extends State<DemoApp> {
       debugPrint('║   [$i] type=${f.type}, bounds=${f.bounds}');
     }
     debugPrint('║ Active NotchGeometry:');
-    debugPrint(
-      '║   Source: ${activeGeometry.source}, Shape: ${activeGeometry.shape}',
-    );
-    debugPrint(
-      '║   Confidence: ${activeGeometry.confidence}, hasCutout: ${activeGeometry.hasCutout}',
-    );
+    debugPrint('║   Source: ${activeGeometry.source}, Shape: ${activeGeometry.shape}');
+    debugPrint('║   Confidence: ${activeGeometry.confidence}, hasCutout: ${activeGeometry.hasCutout}');
     debugPrint('║   bounds: ${activeGeometry.bounds}');
     debugPrint(
       '║   center: ${activeGeometry.center}, width: ${activeGeometry.width}, height: ${activeGeometry.height}',
@@ -203,19 +178,13 @@ class _DemoAppState extends State<DemoApp> {
     debugPrint('║ Coordinates:');
     debugPrint('║   anchorX: $anchorX, anchorTop: $anchorTop');
     debugPrint('║   Global painter origin: ($anchorX, $anchorTop)');
-    debugPrint(
-      '║   Painter top boundary: Y = $topBoundaryGlobal (screen coordinate)',
-    );
+    debugPrint('║   Painter top boundary: Y = $topBoundaryGlobal (screen coordinate)');
     debugPrint('║   Estimated contact neck width: $neckWidth');
     if (_benchmarkLatencyUs case final latencyUs?) {
       final framePercent = (latencyUs / 16666.0 * 100).toStringAsFixed(1);
-      debugPrint(
-        '║ Native Channel Latency: $latencyUs µs ($framePercent% of 60Hz frame)',
-      );
+      debugPrint('║ Native Channel Latency: $latencyUs µs ($framePercent% of 60Hz frame)');
     }
-    debugPrint(
-      '╚════════════════════════════════════════════════════════════════════╝',
-    );
+    debugPrint('╚════════════════════════════════════════════════════════════════════╝');
   }
 
   void _settings(BuildContext context) {
@@ -333,12 +302,7 @@ class _DemoAppState extends State<DemoApp> {
                 SizedBox(width: 4),
                 Text(
                   'YouTube',
-                  style: TextStyle(
-                    color: _ink,
-                    fontSize: 23,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -1.25,
-                  ),
+                  style: TextStyle(color: _ink, fontSize: 23, fontWeight: FontWeight.w900, letterSpacing: -1.25),
                 ),
               ],
             ),
@@ -352,10 +316,7 @@ class _DemoAppState extends State<DemoApp> {
                   }
                   setState(() => _debugMode = next);
                 },
-                icon: Icon(
-                  _debugMode ? Icons.bug_report : Icons.bug_report_outlined,
-                  color: _debugMode ? _red : null,
-                ),
+                icon: Icon(_debugMode ? Icons.bug_report : Icons.bug_report_outlined, color: _debugMode ? _red : null),
               ),
               IconButton(
                 tooltip: 'Show notification (2s)',
@@ -379,11 +340,7 @@ class _DemoAppState extends State<DemoApp> {
                       padding: const EdgeInsets.fromLTRB(16, 6, 16, 14),
                       child: Row(
                         children: [
-                          for (final (index, label) in [
-                            'All',
-                            'Travel',
-                            'Tech',
-                          ].indexed)
+                          for (final (index, label) in ['All', 'Travel', 'Tech'].indexed)
                             Padding(
                               padding: const EdgeInsets.only(right: 8),
                               child: ChoiceChip(
@@ -394,23 +351,17 @@ class _DemoAppState extends State<DemoApp> {
                                 backgroundColor: const Color(0xFFF1F1F1),
                                 selectedColor: _ink,
                                 labelStyle: TextStyle(
-                                  color: _category == index
-                                      ? Colors.white
-                                      : _ink,
+                                  color: _category == index ? Colors.white : _ink,
                                   fontWeight: FontWeight.w600,
                                 ),
-                                onSelected: (_) =>
-                                    setState(() => _category = index),
+                                onSelected: (_) => setState(() => _category = index),
                               ),
                             ),
                         ],
                       ),
                     ),
                     if (_opened)
-                      const Padding(
-                        padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
-                        child: Text('Message opened'),
-                      ),
+                      const Padding(padding: EdgeInsets.fromLTRB(16, 0, 16, 12), child: Text('Message opened')),
                     for (final (index, video) in _videos.indexed)
                       if (_category == 0 || _category == index + 1) ...[
                         AspectRatio(
@@ -418,10 +369,7 @@ class _DemoAppState extends State<DemoApp> {
                           child: Stack(
                             fit: StackFit.expand,
                             children: [
-                              Image.asset(
-                                'assets/${video.image}.jpg',
-                                fit: BoxFit.cover,
-                              ),
+                              Image.asset('assets/${video.image}.jpg', fit: BoxFit.cover),
                               Positioned(
                                 bottom: 8,
                                 right: 8,
@@ -431,10 +379,7 @@ class _DemoAppState extends State<DemoApp> {
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 5,
-                                      vertical: 2,
-                                    ),
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                                     child: Text(
                                       video.duration,
                                       style: const TextStyle(
@@ -457,11 +402,7 @@ class _DemoAppState extends State<DemoApp> {
                               CircleAvatar(
                                 radius: 18,
                                 backgroundColor: video.color,
-                                child: Icon(
-                                  video.icon,
-                                  size: 19,
-                                  color: Colors.white,
-                                ),
+                                child: Icon(video.icon, size: 19, color: Colors.white),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
@@ -470,19 +411,12 @@ class _DemoAppState extends State<DemoApp> {
                                   children: [
                                     Text(
                                       video.title,
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w700,
-                                        color: _ink,
-                                      ),
+                                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: _ink),
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
                                       '${video.channel} · ${video.metadata}',
-                                      style: const TextStyle(
-                                        color: Color(0xFF5B5B5B),
-                                        fontSize: 12,
-                                      ),
+                                      style: const TextStyle(color: Color(0xFF5B5B5B), fontSize: 12),
                                     ),
                                   ],
                                 ),
@@ -575,22 +509,16 @@ class _GeometryDebugHudState extends State<_GeometryDebugHud> {
     final mq = MediaQuery.of(context);
     final view = View.of(context);
     final dpr = mq.devicePixelRatio;
-    final insets = mq.viewPadding != EdgeInsets.zero
-        ? mq.viewPadding
-        : mq.padding;
+    final insets = mq.viewPadding != EdgeInsets.zero ? mq.viewPadding : mq.padding;
     final windowExtends =
-        widget.nativeData?['windowExtendsIntoCutout'] as bool? ??
-        (insets.top > 0 && mq.size.height > 0);
+        widget.nativeData?['windowExtendsIntoCutout'] as bool? ?? (insets.top > 0 && mq.size.height > 0);
     final anchorTop = widget.geometry.anchorTop;
     final anchorX = widget.geometry.anchorX;
     final hasCutout = widget.geometry.hasCutout;
     final maxOverlap = math.max(0.0, anchorTop);
     final yTop = hasCutout ? -math.min(2.5, maxOverlap) : 0.0;
-    final isPunchHole =
-        hasCutout && widget.geometry.shape == NotchShape.punchHole;
-    final domeArch = isPunchHole
-        ? math.min(2.0, math.max(0.0, maxOverlap + yTop))
-        : 0.0;
+    final isPunchHole = hasCutout && widget.geometry.shape == NotchShape.punchHole;
+    final domeArch = isPunchHole ? math.min(2.0, math.max(0.0, maxOverlap + yTop)) : 0.0;
     final topBoundaryGlobal = anchorTop + yTop - domeArch;
     final neckWidth = widget.geometry.width > 0 ? widget.geometry.width : 32.0;
 
@@ -605,13 +533,7 @@ class _GeometryDebugHudState extends State<_GeometryDebugHud> {
             color: const Color(0xEE1E1E24),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: const Color(0xFF00E5FF), width: 1.5),
-            boxShadow: const [
-              BoxShadow(
-                color: Colors.black54,
-                blurRadius: 16,
-                offset: Offset(0, 6),
-              ),
-            ],
+            boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 16, offset: Offset(0, 6))],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -619,21 +541,14 @@ class _GeometryDebugHudState extends State<_GeometryDebugHud> {
             children: [
               // Header bar
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 8,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: const BoxDecoration(
                   color: Color(0xFF141418),
                   borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
                 ),
                 child: Row(
                   children: [
-                    const Icon(
-                      Icons.analytics_outlined,
-                      color: Color(0xFF00E5FF),
-                      size: 18,
-                    ),
+                    const Icon(Icons.analytics_outlined, color: Color(0xFF00E5FF), size: 18),
                     const SizedBox(width: 8),
                     const Text(
                       'GEOMETRY DIAGNOSTIC HUD',
@@ -649,24 +564,15 @@ class _GeometryDebugHudState extends State<_GeometryDebugHud> {
                       iconSize: 18,
                       visualDensity: VisualDensity.compact,
                       padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(
-                        minWidth: 24,
-                        minHeight: 24,
-                      ),
-                      icon: Icon(
-                        _expanded ? Icons.expand_less : Icons.expand_more,
-                        color: Colors.white70,
-                      ),
+                      constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                      icon: Icon(_expanded ? Icons.expand_less : Icons.expand_more, color: Colors.white70),
                       onPressed: () => setState(() => _expanded = !_expanded),
                     ),
                     IconButton(
                       iconSize: 18,
                       visualDensity: VisualDensity.compact,
                       padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(
-                        minWidth: 24,
-                        minHeight: 24,
-                      ),
+                      constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
                       icon: const Icon(Icons.close, color: Colors.white70),
                       onPressed: widget.onClose,
                     ),
@@ -722,22 +628,13 @@ class _GeometryDebugHudState extends State<_GeometryDebugHud> {
                             ? '[${widget.geometry.bounds!.left.toStringAsFixed(1)}, ${widget.geometry.bounds!.top.toStringAsFixed(1)}, ${widget.geometry.bounds!.right.toStringAsFixed(1)}, ${widget.geometry.bounds!.bottom.toStringAsFixed(1)}]'
                             : 'None',
                       ),
-                      _metricRow(
-                        'Anchor (X, Top)',
-                        '(${anchorX.toStringAsFixed(1)}, ${anchorTop.toStringAsFixed(1)})',
-                      ),
+                      _metricRow('Anchor (X, Top)', '(${anchorX.toStringAsFixed(1)}, ${anchorTop.toStringAsFixed(1)})'),
                       _metricRow(
                         'Painter Origin',
                         '(${anchorX.toStringAsFixed(1)}, ${anchorTop.toStringAsFixed(1)}) global',
                       ),
-                      _metricRow(
-                        'Top Boundary Y',
-                        '${topBoundaryGlobal.toStringAsFixed(2)} dp (screen space)',
-                      ),
-                      _metricRow(
-                        'Contact Neck W',
-                        '${neckWidth.toStringAsFixed(1)} dp',
-                      ),
+                      _metricRow('Top Boundary Y', '${topBoundaryGlobal.toStringAsFixed(2)} dp (screen space)'),
+                      _metricRow('Contact Neck W', '${neckWidth.toStringAsFixed(1)} dp'),
                       if (widget.latencyUs != null)
                         _metricRow(
                           'Channel Latency',
@@ -762,9 +659,7 @@ class _GeometryDebugHudState extends State<_GeometryDebugHud> {
                           TextButton(
                             style: TextButton.styleFrom(
                               visualDensity: VisualDensity.compact,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 6),
                             ),
                             onPressed: () {
                               if (widget.progressOverride == null) {
@@ -774,13 +669,8 @@ class _GeometryDebugHudState extends State<_GeometryDebugHud> {
                               }
                             },
                             child: Text(
-                              widget.progressOverride == null
-                                  ? 'Scrub Frame'
-                                  : 'Live Mode',
-                              style: const TextStyle(
-                                fontSize: 10,
-                                color: Color(0xFF00E5FF),
-                              ),
+                              widget.progressOverride == null ? 'Scrub Frame' : 'Live Mode',
+                              style: const TextStyle(fontSize: 10, color: Color(0xFF00E5FF)),
                             ),
                           ),
                         ],
@@ -807,27 +697,17 @@ class _GeometryDebugHudState extends State<_GeometryDebugHud> {
                             child: OutlinedButton(
                               style: OutlinedButton.styleFrom(
                                 side: BorderSide(
-                                  color: widget.useNativeGeometry
-                                      ? const Color(0xFF76FF03)
-                                      : Colors.white38,
+                                  color: widget.useNativeGeometry ? const Color(0xFF76FF03) : Colors.white38,
                                 ),
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 6,
-                                ),
+                                padding: const EdgeInsets.symmetric(vertical: 6),
                                 visualDensity: VisualDensity.compact,
                               ),
-                              onPressed: () => widget.onToggleGeometrySource(
-                                !widget.useNativeGeometry,
-                              ),
+                              onPressed: () => widget.onToggleGeometrySource(!widget.useNativeGeometry),
                               child: Text(
-                                widget.useNativeGeometry
-                                    ? 'Source: Native Path (API 31+)'
-                                    : 'Source: Flutter Features',
+                                widget.useNativeGeometry ? 'Source: Native Path (API 31+)' : 'Source: Flutter Features',
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: widget.useNativeGeometry
-                                      ? const Color(0xFF76FF03)
-                                      : Colors.white,
+                                  color: widget.useNativeGeometry ? const Color(0xFF76FF03) : Colors.white,
                                 ),
                               ),
                             ),
@@ -835,45 +715,26 @@ class _GeometryDebugHudState extends State<_GeometryDebugHud> {
                           const SizedBox(width: 8),
                           IconButton(
                             icon: Icon(
-                              widget.showGuides
-                                  ? Icons.layers
-                                  : Icons.layers_clear,
-                              color: widget.showGuides
-                                  ? const Color(0xFF00E5FF)
-                                  : Colors.white38,
+                              widget.showGuides ? Icons.layers : Icons.layers_clear,
+                              color: widget.showGuides ? const Color(0xFF00E5FF) : Colors.white38,
                               size: 18,
                             ),
-                            onPressed: () =>
-                                widget.onToggleGuides(!widget.showGuides),
+                            onPressed: () => widget.onToggleGuides(!widget.showGuides),
                           ),
                           IconButton(
                             icon: Icon(
-                              widget.highContrast
-                                  ? Icons.contrast
-                                  : Icons.contrast_outlined,
-                              color: widget.highContrast
-                                  ? const Color(0xFFFFEA00)
-                                  : Colors.white38,
+                              widget.highContrast ? Icons.contrast : Icons.contrast_outlined,
+                              color: widget.highContrast ? const Color(0xFFFFEA00) : Colors.white38,
                               size: 18,
                             ),
-                            onPressed: () => widget.onToggleHighContrast(
-                              !widget.highContrast,
-                            ),
+                            onPressed: () => widget.onToggleHighContrast(!widget.highContrast),
                           ),
                           IconButton(
-                            icon: const Icon(
-                              Icons.speed,
-                              color: Color(0xFF00E5FF),
-                              size: 18,
-                            ),
+                            icon: const Icon(Icons.speed, color: Color(0xFF00E5FF), size: 18),
                             onPressed: widget.onRunBenchmark,
                           ),
                           IconButton(
-                            icon: const Icon(
-                              Icons.play_arrow,
-                              color: Color(0xFFFFEA00),
-                              size: 18,
-                            ),
+                            icon: const Icon(Icons.play_arrow, color: Color(0xFFFFEA00), size: 18),
                             onPressed: widget.onTriggerNotification,
                           ),
                         ],
@@ -881,13 +742,7 @@ class _GeometryDebugHudState extends State<_GeometryDebugHud> {
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          const Text(
-                            'Visual Guides Legend: ',
-                            style: TextStyle(
-                              color: Colors.white54,
-                              fontSize: 10,
-                            ),
-                          ),
+                          const Text('Visual Guides Legend: ', style: TextStyle(color: Colors.white54, fontSize: 10)),
                           _legendItem(const Color(0xFF00E5FF), 'Cutout'),
                           const SizedBox(width: 6),
                           _legendItem(const Color(0xFFFF1744), 'Origin'),
@@ -917,11 +772,7 @@ class _GeometryDebugHudState extends State<_GeometryDebugHud> {
             width: 120,
             child: Text(
               label,
-              style: const TextStyle(
-                color: Colors.white60,
-                fontSize: 11,
-                fontFamily: 'monospace',
-              ),
+              style: const TextStyle(color: Colors.white60, fontSize: 11, fontFamily: 'monospace'),
             ),
           ),
           Expanded(
@@ -952,11 +803,7 @@ class _GeometryDebugHudState extends State<_GeometryDebugHud> {
         const SizedBox(width: 3),
         Text(
           text,
-          style: TextStyle(
-            color: color,
-            fontSize: 9,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.bold),
         ),
       ],
     );

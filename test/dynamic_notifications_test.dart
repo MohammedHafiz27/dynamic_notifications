@@ -2224,5 +2224,652 @@ void main() {
 
       expect(find.text('iOS Fallback Morph'), findsNothing);
     });
+
+    testWidgets('19. Droplet organic silhouette verification: pinched liquid waist and continuous contour', (tester) async {
+      // Screen width 800 in default test environment; center cutout at x = 388 (width 24 -> center 400)
+      await mount(
+        tester,
+        platform: TargetPlatform.android,
+        padding: const EdgeInsets.only(top: 44),
+        displayFeatures: const [
+          DisplayFeature(
+            bounds: Rect.fromLTWH(388, 10, 24, 24),
+            type: DisplayFeatureType.cutout,
+            state: DisplayFeatureState.unknown,
+          ),
+        ],
+      );
+      controller.show(
+        const DynamicNotification(
+          title: 'Liquid Droplet Morph',
+          message: 'Pendant droplet formation',
+          duration: null,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+      final shapeSize = tester.getSize(shape);
+      final center = shapeSize.width / 2;
+
+      // Drag upward -60px (progress = 0.25 <= 0.28, morphProgress == 0.75)
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('Liquid Droplet Morph')),
+      );
+      await gesture.moveBy(const Offset(0, -60));
+      await tester.pump();
+
+      expect(controller.morphProgress, closeTo(0.75, 0.01));
+
+      // At progress <= 0.28, the entrance neck and droplet are attached to the cutout
+      expect(
+        shape,
+        paints..path(
+          includes: [
+            Offset(center, 0.0), // Inside aperture contact
+            Offset(center, 12.0), // Neck / waist center
+          ],
+          excludes: [
+            Offset(center - 80.0, 12.0), // Outside lateral neck
+            Offset(center + 80.0, 12.0),
+          ],
+        ),
+      );
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('20. Exact Reverse Playback: entrance and dismissal produce identical geometry at matching progress values', (tester) async {
+      final entranceBounds = <double, Rect>{};
+      final dismissalBounds = <double, Rect>{};
+
+      for (final p in [0.25, 0.50, 0.75]) {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: MediaQuery(
+                data: const MediaQueryData(padding: EdgeInsets.only(top: 40)),
+                child: DynamicNotifications(
+                  controller: DynamicNotificationController(),
+                  progressOverride: p,
+                  child: const SizedBox.expand(),
+                ),
+              ),
+            ),
+          ),
+        );
+        final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+        expect(
+          shape,
+          paints..something((Symbol method, List<dynamic> args) {
+            if (method == #drawPath) {
+              final path = args[0] as Path;
+              entranceBounds[p] = path.getBounds();
+              return true;
+            }
+            return false;
+          }),
+        );
+      }
+
+      // Now test during reverse dismissal
+      await mount(tester, padding: const EdgeInsets.only(top: 40));
+      controller.show(
+        const DynamicNotification(
+          title: 'Exact Reverse Test',
+          message: 'Geometry Verification',
+          duration: null,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Trigger dismissal
+      controller.dismiss();
+      await tester.pump(); // Starts reverse animation (reverseDuration is 640ms)
+
+      // At t = 160ms (25% elapsed of 640ms), progress is exactly 0.75
+      await tester.pump(const Duration(milliseconds: 160));
+      var shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+      expect(
+        shape,
+        paints..something((Symbol method, List<dynamic> args) {
+          if (method == #drawPath) {
+            final path = args[0] as Path;
+            dismissalBounds[0.75] = path.getBounds();
+            return true;
+          }
+          return false;
+        }),
+      );
+
+      // At t = 160ms more (320ms elapsed = 50%), progress is exactly 0.50
+      await tester.pump(const Duration(milliseconds: 160));
+      shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+      expect(
+        shape,
+        paints..something((Symbol method, List<dynamic> args) {
+          if (method == #drawPath) {
+            final path = args[0] as Path;
+            dismissalBounds[0.50] = path.getBounds();
+            return true;
+          }
+          return false;
+        }),
+      );
+
+      // At t = 160ms more (480ms elapsed = 75%), progress is exactly 0.25
+      await tester.pump(const Duration(milliseconds: 160));
+      shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+      expect(
+        shape,
+        paints..something((Symbol method, List<dynamic> args) {
+          if (method == #drawPath) {
+            final path = args[0] as Path;
+            dismissalBounds[0.25] = path.getBounds();
+            return true;
+          }
+          return false;
+        }),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Verify entrance and dismissal paths have identical geometry at each progress step
+      for (final p in [0.25, 0.50, 0.75]) {
+        final eb = entranceBounds[p]!;
+        final db = dismissalBounds[p]!;
+        expect(db.left, closeTo(eb.left, 0.05), reason: 'Mismatch in left at progress $p');
+        expect(db.top, closeTo(eb.top, 0.05), reason: 'Mismatch in top at progress $p');
+        expect(db.right, closeTo(eb.right, 0.05), reason: 'Mismatch in right at progress $p');
+        expect(db.bottom, closeTo(eb.bottom, 0.05), reason: 'Mismatch in bottom at progress $p');
+      }
+    });
+
+
+    testWidgets('21. Interactive drag direction reversal retraces entrance forward and backward seamlessly', (tester) async {
+      await mount(tester, padding: const EdgeInsets.only(top: 40));
+      controller.show(
+        const DynamicNotification(
+          title: 'Reversal Scrubbing',
+          message: 'Retracing timeline',
+          duration: null,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('Reversal Scrubbing')),
+      );
+
+      // Drag upward by -40px (scrubs timeline backward to progress 0.50, morphProgress 0.50)
+      await gesture.moveBy(const Offset(0, -40));
+      await tester.pump();
+      expect(controller.morphProgress, closeTo(0.50, 0.01));
+      expect(controller.dragOffset, -40.0);
+
+      // Drag downward by +20px (reverses direction immediately, retracing forward to progress 0.75, morphProgress 0.25)
+      await gesture.moveBy(const Offset(0, 20));
+      await tester.pump();
+      expect(controller.morphProgress, closeTo(0.25, 0.01));
+      expect(controller.dragOffset, -20.0);
+
+      // Drag back downward by +20px to return to rest (progress 1.0, morphProgress 0.0)
+      await gesture.moveBy(const Offset(0, 20));
+      await tester.pump();
+      expect(controller.morphProgress, closeTo(0.0, 0.01));
+      expect(controller.dragOffset, 0.0);
+
+      // Release at rest
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(find.text('Reversal Scrubbing'), findsOneWidget);
+      expect(controller.interactionState, NotificationInteractionState.idle);
+    });
+
+    testWidgets('22. Duplicate dismissal callback protection during rapid or repeated gesture inputs', (tester) async {
+      await mount(tester);
+      var dismissCount = 0;
+      controller.show(
+        DynamicNotification(
+          title: 'Duplicate Callback Guard',
+          duration: null,
+          onTap: () {},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Trigger dismissal via upward flick
+      await tester.fling(find.text('Duplicate Callback Guard'), const Offset(0, -60), 800.0);
+      await tester.pump();
+
+      // Attempt redundant dismiss calls during exit animation
+      controller.dismiss();
+      controller.dismiss();
+
+      await tester.pumpAndSettle();
+
+      expect(find.text('Duplicate Callback Guard'), findsNothing);
+      expect(controller.interactionState, NotificationInteractionState.idle);
+      expect(dismissCount, 0); // No tap open fired
+    });
+
+    testWidgets('23. No frame discontinuity on gesture release: bounds match continuously before and after release without jumping', (tester) async {
+      await mount(tester, padding: const EdgeInsets.only(top: 40));
+      controller.show(
+        const DynamicNotification(
+          title: 'Discontinuity Check',
+          message: 'Zero jump test',
+          duration: null,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('Discontinuity Check')),
+      );
+      // Drag past dismiss threshold (-40px)
+      await gesture.moveBy(const Offset(0, -40));
+      await tester.pump();
+
+      // Capture geometry bounds before release
+      Rect? boundsBeforeRelease;
+      final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+      expect(
+        shape,
+        paints..something((Symbol method, List<dynamic> args) {
+          if (method == #drawPath) {
+            final path = args[0] as Path;
+            boundsBeforeRelease = path.getBounds();
+            return true;
+          }
+          return false;
+        }),
+      );
+      expect(boundsBeforeRelease, isNotNull);
+
+      // Release pointer (triggers _exit() with reverse animation)
+      await gesture.up();
+      // Pump immediate next frame (t=0 of exit)
+      await tester.pump();
+
+      Rect? boundsAfterRelease;
+      expect(
+        shape,
+        paints..something((Symbol method, List<dynamic> args) {
+          if (method == #drawPath) {
+            final path = args[0] as Path;
+            boundsAfterRelease = path.getBounds();
+            return true;
+          }
+          return false;
+        }),
+      );
+      expect(boundsAfterRelease, isNotNull);
+
+      // Verify that top and bottom are continuous (no teleportation/jump)
+      expect(boundsAfterRelease!.top, closeTo(boundsBeforeRelease!.top, 1.5));
+      expect(boundsAfterRelease!.bottom, closeTo(boundsBeforeRelease!.bottom, 1.5));
+
+      await tester.pumpAndSettle();
+      expect(find.text('Discontinuity Check'), findsNothing);
+    });
+
+    testWidgets('24. Test A: First notification entrance starts from compact droplet at notch and expands', (tester) async {
+      await mount(
+        tester,
+        padding: const EdgeInsets.only(top: 40),
+        displayFeatures: const [
+          DisplayFeature(
+            bounds: Rect.fromLTWH(388, 8, 24, 24),
+            type: DisplayFeatureType.cutout,
+            state: DisplayFeatureState.unknown,
+          ),
+        ],
+      );
+
+      controller.show(
+        const DynamicNotification(
+          title: 'Notification A',
+          message: 'Droplet entrance verification',
+          duration: null,
+        ),
+      );
+      // Initial frame: progress is 0.0, droplet inside notch
+      await tester.pump();
+      expect(controller.morphProgress, 1.0); // fully in notch
+      expect(find.text('Notification A').hitTestable(), findsNothing);
+
+      // Advance 50ms: droplet emerges from notch
+      await tester.pump(const Duration(milliseconds: 50));
+      final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+      Rect? initialBounds;
+      expect(
+        shape,
+        paints..something((Symbol method, List<dynamic> args) {
+          if (method == #drawPath) {
+            initialBounds = (args[0] as Path).getBounds();
+            return true;
+          }
+          return false;
+        }),
+      );
+      expect(initialBounds, isNotNull);
+      // Compact droplet width at notch is < 30px
+      expect(initialBounds!.width, lessThan(30.0));
+      expect(find.text('Notification A').hitTestable(), findsNothing);
+
+      // Advance animation partially: 150ms
+      await tester.pump(const Duration(milliseconds: 150));
+      Rect? intermediateBounds;
+      expect(
+        shape,
+        paints..something((Symbol method, List<dynamic> args) {
+          if (method == #drawPath) {
+            intermediateBounds = (args[0] as Path).getBounds();
+            return true;
+          }
+          return false;
+        }),
+      );
+      expect(intermediateBounds, isNotNull);
+      // Intermediate state: stretching droplet, still narrow compared to full card
+      expect(intermediateBounds!.width, lessThan(60.0));
+      expect(intermediateBounds!.height, greaterThan(initialBounds!.height));
+
+      // Advance to full completion
+      await tester.pumpAndSettle();
+      Rect? completedBounds;
+      expect(
+        shape,
+        paints..something((Symbol method, List<dynamic> args) {
+          if (method == #drawPath) {
+            completedBounds = (args[0] as Path).getBounds();
+            return true;
+          }
+          return false;
+        }),
+      );
+      expect(completedBounds, isNotNull);
+      // Fully expanded card: width > 300px
+      expect(completedBounds!.width, greaterThan(300.0));
+      expect(find.text('Notification A').hitTestable(), findsOneWidget);
+      expect(controller.morphProgress, 0.0);
+    });
+
+    testWidgets('25. Test B: Hold notification 1, return to rest, trigger notification 2: starts from droplet initial state and does not appear fully expanded immediately', (tester) async {
+      await mount(
+        tester,
+        padding: const EdgeInsets.only(top: 40),
+        displayFeatures: const [
+          DisplayFeature(
+            bounds: Rect.fromLTWH(388, 8, 24, 24),
+            type: DisplayFeatureType.cutout,
+            state: DisplayFeatureState.unknown,
+          ),
+        ],
+      );
+
+      // 1. Show notification 1 and expand fully
+      controller.show(
+        const DynamicNotification(
+          title: 'Notification B1',
+          duration: null,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Notification B1'), findsOneWidget);
+
+      // 2. Hold notification 1
+      final gesture = await tester.startGesture(tester.getCenter(find.text('Notification B1')));
+      expect(controller.interactionState, NotificationInteractionState.holding);
+      await tester.pump(const Duration(milliseconds: 600));
+
+      // 3. Return to rest without dragging
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(controller.interactionState, NotificationInteractionState.idle);
+
+      // 4. Trigger notification 2
+      controller.show(
+        const DynamicNotification(
+          title: 'Notification B2',
+          duration: null,
+        ),
+      );
+
+      // Pump until Notification B1 finishes reverse exit and Notification B2 starts
+      while (controller.currentNotification?.title == 'Notification B1') {
+        await tester.pump(const Duration(milliseconds: 40));
+      }
+
+      // VERIFY: Notification B2 is active and starts at droplet initial state (morphProgress 1.0)
+      expect(controller.currentNotification?.title, 'Notification B2');
+      expect(controller.morphProgress, 1.0);
+      expect(find.text('Notification B2').hitTestable(), findsNothing);
+
+      // Advance 50ms: droplet emerges from notch
+      await tester.pump(const Duration(milliseconds: 50));
+      final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+      Rect? n2InitialBounds;
+      expect(
+        shape,
+        paints..something((Symbol method, List<dynamic> args) {
+          if (method == #drawPath) {
+            n2InitialBounds = (args[0] as Path).getBounds();
+            return true;
+          }
+          return false;
+        }),
+      );
+      expect(n2InitialBounds, isNotNull);
+      // Droplet initial width must be < 30px, NOT fully expanded card (> 300px)
+      expect(n2InitialBounds!.width, lessThan(30.0));
+      expect(find.text('Notification B2').hitTestable(), findsNothing);
+
+      // Complete entrance
+      await tester.pumpAndSettle();
+      expect(find.text('Notification B2').hitTestable(), findsOneWidget);
+      expect(controller.morphProgress, 0.0);
+    });
+
+    testWidgets('26. Test C: Complete notification 1, trigger notification 2: fresh entrance animation', (tester) async {
+      await mount(tester, padding: const EdgeInsets.only(top: 40));
+
+      // Show notification 1 and dismiss it completely
+      controller.show(
+        const DynamicNotification(
+          title: 'Notification C1',
+          duration: null,
+        ),
+      );
+      await tester.pumpAndSettle();
+      controller.dismiss();
+      await tester.pumpAndSettle();
+      expect(find.text('Notification C1'), findsNothing);
+
+      // Trigger notification 2
+      controller.show(
+        const DynamicNotification(
+          title: 'Notification C2',
+          duration: null,
+        ),
+      );
+      await tester.pump(); // t=0 frame
+
+      expect(controller.morphProgress, 1.0);
+      expect(find.text('Notification C2').hitTestable(), findsNothing);
+
+      // Advance 50ms: droplet emerges
+      await tester.pump(const Duration(milliseconds: 50));
+      final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+      Rect? c2Bounds;
+      expect(
+        shape,
+        paints..something((Symbol method, List<dynamic> args) {
+          if (method == #drawPath) {
+            c2Bounds = (args[0] as Path).getBounds();
+            return true;
+          }
+          return false;
+        }),
+      );
+      expect(c2Bounds, isNotNull);
+      expect(c2Bounds!.width, lessThan(30.0));
+      expect(find.text('Notification C2').hitTestable(), findsNothing);
+
+      await tester.pumpAndSettle();
+      expect(find.text('Notification C2').hitTestable(), findsOneWidget);
+      expect(controller.morphProgress, 0.0);
+    });
+
+    testWidgets('27. Test D: Trigger notifications 1, 2, and 3 sequentially: all three perform the same entrance sequence', (tester) async {
+      await mount(tester, padding: const EdgeInsets.only(top: 40));
+
+      for (var i = 1; i <= 3; i++) {
+        controller.show(
+          DynamicNotification(
+            title: 'Sequential Notification $i',
+            duration: null,
+          ),
+        );
+        await tester.pump(); // t=0 frame
+        expect(controller.morphProgress, 1.0);
+        expect(find.text('Sequential Notification $i').hitTestable(), findsNothing);
+
+        // Advance 50ms: droplet emerges
+        await tester.pump(const Duration(milliseconds: 50));
+        final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+        Rect? bounds;
+        expect(
+          shape,
+          paints..something((Symbol method, List<dynamic> args) {
+            if (method == #drawPath) {
+              bounds = (args[0] as Path).getBounds();
+              return true;
+            }
+            return false;
+          }),
+        );
+        expect(bounds, isNotNull);
+        expect(bounds!.width, lessThan(30.0), reason: 'Notification $i did not start as a compact droplet');
+        expect(find.text('Sequential Notification $i').hitTestable(), findsNothing);
+
+        await tester.pumpAndSettle();
+        expect(find.text('Sequential Notification $i').hitTestable(), findsOneWidget);
+        expect(controller.morphProgress, 0.0);
+
+        controller.dismiss();
+        await tester.pumpAndSettle();
+      }
+    });
+
+    testWidgets('28. Test E: Trigger a second notification while previous animation callback and timers are pending: stale callbacks cannot affect new notification', (tester) async {
+      await mount(tester, padding: const EdgeInsets.only(top: 40));
+
+      // Show notification 1 with auto-dismiss duration
+      controller.show(
+        const DynamicNotification(
+          title: 'Notification E1',
+          duration: Duration(seconds: 4),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Trigger a drag that causes spring-back to run
+      final gesture = await tester.startGesture(tester.getCenter(find.text('Notification E1')));
+      await gesture.moveBy(const Offset(0, -15));
+      await tester.pump();
+      await gesture.up(); // starts _springController (springBackDuration = 350ms)
+      await tester.pump(const Duration(milliseconds: 50)); // springController in flight
+
+      // While springController and auto-dismiss timer are both pending, trigger Notification E2
+      controller.show(
+        const DynamicNotification(
+          title: 'Notification E2',
+          duration: null,
+        ),
+      );
+
+      // Pump until Notification E1 finishes exit and Notification E2 starts
+      while (controller.currentNotification?.title == 'Notification E1') {
+        await tester.pump(const Duration(milliseconds: 40));
+      }
+
+      // Verify Notification E2 started fresh at droplet initial state (morphProgress 1.0)
+      expect(controller.currentNotification?.title, 'Notification E2');
+      expect(controller.morphProgress, 1.0);
+      expect(find.text('Notification E2').hitTestable(), findsNothing);
+
+      // Advance 50ms: droplet emerges
+      await tester.pump(const Duration(milliseconds: 50));
+      final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+      Rect? e2Bounds;
+      expect(
+        shape,
+        paints..something((Symbol method, List<dynamic> args) {
+          if (method == #drawPath) {
+            e2Bounds = (args[0] as Path).getBounds();
+            return true;
+          }
+          return false;
+        }),
+      );
+      expect(e2Bounds, isNotNull);
+      expect(e2Bounds!.width, lessThan(30.0));
+
+      // Complete entrance
+      await tester.pumpAndSettle();
+      expect(find.text('Notification E2').hitTestable(), findsOneWidget);
+
+      // Advance by remaining time of the old 4s timer to prove old timer cannot dismiss Notification E2
+      await tester.pump(const Duration(seconds: 5));
+      expect(find.text('Notification E2'), findsOneWidget);
+    });
+
+    testWidgets('29. Test F: Entrance animation does not restart unexpectedly when unrelated widget properties update', (tester) async {
+      final testController = DynamicNotificationController();
+
+      Widget buildHarness({required Widget childWidget, required bool debugShowGuides}) {
+        return MaterialApp(
+          home: Scaffold(
+            body: MediaQuery(
+              data: const MediaQueryData(padding: EdgeInsets.only(top: 40)),
+              child: DynamicNotifications(
+                controller: testController,
+                debugShowGuides: debugShowGuides,
+                child: childWidget,
+              ),
+            ),
+          ),
+        );
+      }
+
+      await tester.pumpWidget(buildHarness(childWidget: const Text('Child A'), debugShowGuides: false));
+      testController.show(
+        const DynamicNotification(
+          title: 'Notification F',
+          duration: null,
+        ),
+      );
+      await tester.pump(); // t=0 frame
+
+      // Advance to 390ms (50% of 780ms entrance animation)
+      await tester.pump(const Duration(milliseconds: 390));
+      final progressAtHalfway = testController.morphProgress;
+      expect(progressAtHalfway, closeTo(0.50, 0.05));
+
+      // Rebuild with updated unrelated properties: different child and toggled debugShowGuides
+      await tester.pumpWidget(buildHarness(childWidget: const Text('Child B'), debugShowGuides: true));
+      await tester.pump();
+
+      // Verify entrance animation did NOT restart to 1.0 or jump to 0.0
+      expect(testController.morphProgress, closeTo(progressAtHalfway, 0.05));
+
+      // Complete entrance cleanly
+      await tester.pumpAndSettle();
+      expect(testController.morphProgress, 0.0);
+      expect(find.text('Notification F'), findsOneWidget);
+    });
   });
 }
