@@ -190,12 +190,18 @@ class NotchGeometryDetector {
 
   /// Detects notch geometry from the provided [BuildContext].
   static NotchGeometry detect(BuildContext context) {
-    if (AndroidCutoutGeometryProvider.instance.cached != null) {
-      return AndroidCutoutGeometryProvider.instance.cached!;
+    final mq = MediaQuery.of(context);
+    final platform = Theme.of(context).platform;
+    final cached = AndroidCutoutGeometryProvider.instance.cached;
+    if (platform == TargetPlatform.android &&
+        cached != null &&
+        cached.screenSize == mq.size &&
+        cached.devicePixelRatio == mq.devicePixelRatio) {
+      return cached;
     }
     return fromMediaQuery(
-      mediaQuery: MediaQuery.of(context),
-      platform: Theme.of(context).platform,
+      mediaQuery: mq,
+      platform: platform,
     );
   }
 
@@ -473,10 +479,14 @@ class AndroidCutoutGeometryProvider {
   final MethodChannel channel;
 
   NotchGeometry? _cached;
-  bool _fetching = false;
+  Future<NotchGeometry?>? _pendingLoad;
 
   /// Returns the cached [NotchGeometry] if available, otherwise null.
   NotchGeometry? get cached => _cached;
+
+  /// Sets the cached geometry directly for unit testing.
+  @visibleForTesting
+  set cachedForTesting(NotchGeometry? value) => _cached = value;
 
   /// Asynchronously queries native Android cutout geometry, caches the result,
   /// and returns a resolved [NotchGeometry].
@@ -490,8 +500,21 @@ class AndroidCutoutGeometryProvider {
         _cached!.devicePixelRatio == mediaQuery.devicePixelRatio) {
       return _cached;
     }
-    if (_fetching) return null;
-    _fetching = true;
+    if (_pendingLoad != null) {
+      return _pendingLoad;
+    }
+    final future = _loadInternal(mediaQuery);
+    _pendingLoad = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_pendingLoad, future)) {
+        _pendingLoad = null;
+      }
+    }
+  }
+
+  Future<NotchGeometry?> _loadInternal(MediaQueryData mediaQuery) async {
     try {
       final res =
           await channel.invokeMapMethod<String, dynamic>('getCutoutGeometry');
@@ -588,11 +611,12 @@ class AndroidCutoutGeometryProvider {
       return _cached;
     } catch (_) {
       return null;
-    } finally {
-      _fetching = false;
     }
   }
 
-  /// Clears any cached geometry.
-  void clear() => _cached = null;
+  /// Clears any cached geometry and active pending query.
+  void clear() {
+    _cached = null;
+    _pendingLoad = null;
+  }
 }

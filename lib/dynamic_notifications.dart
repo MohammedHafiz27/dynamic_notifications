@@ -768,19 +768,25 @@ class _NotificationPainter extends CustomPainter {
       final double join = math.max(0.0, centerY + height * 0.16);
 
       if (!compact && rect.bottom > 0) {
-        if (!isExiting && progress <= 0.42) {
+        if (!isExiting && progress <= 0.44) {
           showBridge = true;
-          bridgeOpacity = (1.0 - (progress / 0.42)).clamp(0.0, 1.0);
-          shoulder = math.min(maxContactRadius, 24.0) * (0.65 + 0.35 * bridgeOpacity);
-          waist = math.max(2.5, shoulder * 0.44 * math.pow(bridgeOpacity, 0.8));
-          attach = math.min(width * 0.44, shoulder + 10.0);
+          final bridgeFactor = (1.0 - (progress / 0.44)).clamp(0.0, 1.0);
+          bridgeOpacity = Curves.easeIn.transform(bridgeFactor);
+          // Shoulder tapers from aperture contact to a tight neck
+          shoulder = math.min(maxContactRadius, 24.0) * (0.35 + 0.65 * bridgeFactor);
+          // Waist pinches down under gravity tension and collapses cleanly to 0 at pinch-off
+          final pinchFactor = Curves.easeInCubic.transform(bridgeFactor);
+          waist = shoulder * 0.48 * pinchFactor;
+          attach = math.min(width * 0.44, shoulder + 10.0 * bridgeFactor);
         } else if (isExiting && progress <= 0.65) {
           showBridge = true;
-          final suction = math.sin(math.pi * (1.0 - progress / 0.65).clamp(0.0, 1.0));
-          bridgeOpacity = (1.0 - (progress / 0.65)).clamp(0.0, 1.0);
-          shoulder = math.min(maxContactRadius * 1.2, 28.0) * (0.5 + 0.5 * suction);
-          waist = math.max(3.0, shoulder * 0.55 * suction);
-          attach = math.min(width * 0.46, shoulder + 12.0);
+          final u = (progress / 0.65).clamp(0.0, 1.0);
+          final suction = math.sin(math.pi * u);
+          bridgeOpacity = (1.0 - u).clamp(0.0, 1.0);
+          // During absorption, shoulder and waist emerge organically and taper smoothly to 0 at progress = 0
+          shoulder = math.min(maxContactRadius * 1.25, 28.0) * math.pow(suction, 0.7);
+          waist = shoulder * 0.55 * math.pow(suction, 0.9);
+          attach = math.min(width * 0.46, shoulder + 12.0 * suction);
         } else {
           showBridge = false;
           bridgeOpacity = 0.0;
@@ -789,7 +795,7 @@ class _NotificationPainter extends CustomPainter {
           attach = 0.0;
         }
 
-        if (showBridge && shoulder > 0 && join > yTop) {
+        if (showBridge && shoulder > 0 && waist > 0 && join > yTop) {
           tailLeft = centerX - math.max(shoulder, attach);
           tailRight = centerX + math.max(shoulder, attach);
           final waistY = lerpDouble(yTop, rect.top, 0.58)!;
@@ -992,5 +998,7 @@ class _NotificationPainter extends CustomPainter {
       old.borderRadius != borderRadius ||
       old.compact != compact ||
       old.geometry != geometry ||
-      old.debugShowGuides != debugShowGuides;
+      old.debugShowGuides != debugShowGuides ||
+      old.renderMode != renderMode ||
+      old.isExiting != isExiting;
 }

@@ -1,9 +1,9 @@
 # Dynamic Notifications — Native Geometry, Emulator Validation, Liquid Notch Comparison & Morphology Audit
 
-**Review Version:** 5.0 (Android Plugin Packaging, Inconsistent Test Count Resolution, Liquid Notch Comparative Study, A/B Visual Experiment & Empirical Validation)  
+**Review Version:** 5.1 (Android Plugin Packaging Hardening, API 21-30 Guarding, Continuous Fluid Morphology, Inconsistent Test Count Resolution & Empirical Validation)  
 **Scope:** Flutter Package `dynamic_notifications`  
 **Date:** November 2026  
-**Status:** Packaged as Flutter Android Plugin, Verified with 48 Tests, A/B Evaluated on Emulator Runtime  
+**Status:** Packaged as Flutter Android Plugin, Verified with 52 Tests, A/B Evaluated on Emulator Runtime  
 
 ---
 
@@ -12,10 +12,10 @@
 This document presents the visual, mathematical, runtime engineering, and comparative validation of the `dynamic_notifications` package for Flutter. The package renders dynamic in-app notification cards anchored to hardware camera cutouts (Android punch holes, pill clusters, teardrop notches, and the iOS Dynamic Island).
 
 Following previous architectural audits and emulator runtime validation (Android 16, API 36, DPR 2.625 on Pixel 7a emulator profile), this version completes four critical engineering objectives:
-1. **Android Plugin Packaging:** Transitioned native Android geometry detection from example-only code into a properly packaged Flutter plugin with `android/build.gradle` and `DynamicNotificationsPlugin.kt` implementing `FlutterPlugin` and `ActivityAware`. External consumers now automatically receive native Android cutout detection without manual host activity configuration.
-2. **Resolution of Inconsistent Test Counts (41, 44, 45, 48):** Fully reconciled the test count discrepancies across previous documentation versions, establishing the exact test inventory (now 48 total automated tests across unit, widget, and screenshot suites, all passing).
+1. **Android Plugin Packaging & Backward Compatibility Hardening:** Transitioned native Android geometry detection from example-only code into a properly packaged Flutter plugin with `android/build.gradle` and `DynamicNotificationsPlugin.kt` implementing `FlutterPlugin` and `ActivityAware`. Guarded against runtime `NoSuchMethodError` crashes on Android API 21–30 (`DisplayCutout.waterfallInsets` guarded for API 30+, `decorView.rootWindowInsets` guarded for API 23+, and configuration changes cleanly invalidating stale cached geometry). External consumers now automatically receive native Android cutout detection without manual host activity configuration.
+2. **Resolution of Inconsistent Test Counts (41, 44, 45, 48, 52):** Fully reconciled the test count discrepancies across previous documentation versions, establishing the exact test inventory (now 52 total automated tests across unit, widget, and screenshot suites, all passing).
 3. **Rigorous Reality & Precision Standards:** Clearly distinguished emulator testing from physical device testing, and removed unsupported claims of "0µs latency", "guaranteed zero gaps", or "perfect physical accuracy".
-4. **Liquid Notch Comparative Study & A/B Visual Experiment:** Studied the architecture and rendering techniques of `liquid_notch` (MIT license, Lazizbek97), built two rendering modes (`NotificationRenderMode.standard` and `NotificationRenderMode.experimentalLiquid`) in the example application using identical `NotchGeometry` data, and captured reproducible baseline and experimental screenshots across animation keyframes (0%, 15%, 30%, 50%, 75%, 100%).
+4. **Liquid Notch Comparative Study & A/B Visual Experiment:** Studied the architecture and rendering techniques of `liquid_notch` (MIT license, Lazizbek97), built two rendering modes (`NotificationRenderMode.standard` and `NotificationRenderMode.experimentalLiquid`) in the example application using identical `NotchGeometry` data, and captured reproducible baseline and experimental screenshots across animation keyframes (0%, 15%, 30%, 50%, 75%, 100%). Refined the experimental liquid renderer to eliminate geometric pops during detachment and absorption sweep by ensuring continuous convergence to zero width at all boundaries.
 
 ---
 
@@ -93,7 +93,7 @@ The package operates across four distinct coordinate systems:
 
 ---
 
-## 3. Reconciliation of Inconsistent Test Counts (41, 44, 45, 48)
+## 3. Reconciliation of Inconsistent Test Counts (41, 44, 45, 48, 52)
 
 Prior documentation exhibited differing test counts (41 in Audit v2, 44 in Audit v3, and 45 in Audit v4). This arose from incremental test additions across development stages without retroactive reconciliation across all documentation sections:
 
@@ -102,9 +102,10 @@ Prior documentation exhibited differing test counts (41 in Audit v2, 44 in Audit
 | **Audit v2.0** | 13 tests | 28 tests | 0 | **41 tests** | Initial geometry regression suite |
 | **Audit v3.0** | 13 tests | 31 tests | 0 | **44 tests** | Added zero-padding, shadow headroom, and landscape immersive mode tests |
 | **Audit v4.0** | 13 tests | 32 tests | 0 | **45 tests** | Added native cutoutPath test, boundingRects fallback test, and visual guides test |
-| **Audit v5.0 (Current)** | 13 tests | 34 tests | 1 test (6 frames) | **48 tests** | Added experimental liquid mode tests, zero-anchor boundary test, and reproducible PNG screenshot validation suite |
+| **Audit v5.0** | 13 tests | 34 tests | 1 test (12 frames) | **48 tests** | Added initial experimental liquid mode tests, zero-anchor boundary test, and reproducible PNG screenshot validation suite |
+| **Audit v5.1 (Current)** | 13 tests | 38 tests | 1 test (12 frames) | **52 tests** | Added tests for iOS platform isolation from Android cache, rotation metric change invalidation, concurrent provider query deduplication, and A/B renderMode/isExiting repaint reactivity |
 
-All **48 automated tests** currently execute cleanly with 0 failures and 0 warnings.
+All **52 automated tests** currently execute cleanly with 0 failures and 0 warnings.
 
 ---
 
@@ -144,10 +145,13 @@ The package is now fully configured as a first-class Flutter Android plugin:
    - Attaches `setOnApplyWindowInsetsListener` to the `Activity`'s window decor view eagerly.
    - Extracts exact physical aperture coordinates via `DisplayCutout.getCutoutPath().computeBounds()` on API 31+.
    - Falls back to `DisplayCutout.boundingRects` on API 28–30.
+   - Hardened with explicit API level checks: `DisplayCutout.waterfallInsets` is guarded with `Build.VERSION_CODES.R` (API 30+) to prevent `NoSuchMethodError` crashes on Android 9/10 (API 28–29); `decorView.rootWindowInsets` is guarded with `Build.VERSION_CODES.M` (API 23+) for API 21–22 compatibility.
+   - Invalidate `cachedGeometry = null` on activity config detachment (`onDetachedFromActivityForConfigChanges`) and detachment (`onDetachedFromActivity`) to prevent stale geometry across orientation changes.
    - Responds to `dynamic_notifications/android_geometry` MethodChannel queries from memory.
 4. **Lifecycle & Metric Responsiveness:**
    - Eagerly loads on Android without blocking the initial build frame.
-   - Refreshes cached geometry when window dimensions or orientation change.
+   - Refreshes cached geometry when window dimensions or orientation change; deduplicates concurrent asynchronous queries via shared in-flight futures.
+   - `NotchGeometryDetector.detect(context)` validates that cached Android geometry matches current screen dimensions and DPR before use, cleanly falling back to `fromMediaQuery` on rotation or iOS platform.
    - Never invokes platform channels during live animation frames.
 
 ---

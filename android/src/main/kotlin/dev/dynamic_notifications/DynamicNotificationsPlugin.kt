@@ -44,6 +44,7 @@ class DynamicNotificationsPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
 
     override fun onDetachedFromActivityForConfigChanges() {
         activity = null
+        cachedGeometry = null
     }
 
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
@@ -53,6 +54,7 @@ class DynamicNotificationsPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
 
     override fun onDetachedFromActivity() {
         activity = null
+        cachedGeometry = null
     }
 
     private fun attachInsetsListener() {
@@ -61,7 +63,11 @@ class DynamicNotificationsPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
             cacheGeometryFromInsets(insets)
             view.onApplyWindowInsets(insets)
         }
-        val currentInsets = window.decorView.rootWindowInsets
+        val currentInsets = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            window.decorView.rootWindowInsets
+        } else {
+            null
+        }
         if (currentInsets != null) {
             cacheGeometryFromInsets(currentInsets)
         }
@@ -72,7 +78,11 @@ class DynamicNotificationsPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
             "getCutoutGeometry" -> {
                 val startNs = System.nanoTime()
                 val geometry = cachedGeometry ?: run {
-                    val insets = activity?.window?.decorView?.rootWindowInsets
+                    val insets = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        activity?.window?.decorView?.rootWindowInsets
+                    } else {
+                        null
+                    }
                     if (insets != null) {
                         cacheGeometryFromInsets(insets)
                     } else {
@@ -143,7 +153,13 @@ class DynamicNotificationsPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
                 data["boundWidth"] = topRect.width().toDouble()
                 data["boundHeight"] = topRect.height().toDouble()
             }
-            val safeInsets = cutout.waterfallInsets
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val waterfall = cutout.waterfallInsets
+                data["waterfallTop"] = waterfall.top
+                data["waterfallBottom"] = waterfall.bottom
+                data["waterfallLeft"] = waterfall.left
+                data["waterfallRight"] = waterfall.right
+            }
             data["safeInsetTop"] = cutout.safeInsetTop
             data["safeInsetBottom"] = cutout.safeInsetBottom
             data["safeInsetLeft"] = cutout.safeInsetLeft

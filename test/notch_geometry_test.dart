@@ -1239,5 +1239,189 @@ void main() {
       expect(tester.takeException(), isNull);
       await tester.pumpAndSettle();
     });
+
+    testWidgets('NotchGeometryDetector.detect ignores cached Android geometry on iOS platform', (tester) async {
+      final provider = AndroidCutoutGeometryProvider.instance;
+      const cachedGeo = NotchGeometry(
+        bounds: Rect.fromLTWH(188, 10, 24, 24),
+        center: Offset(200, 22),
+        width: 24,
+        height: 24,
+        top: 10,
+        bottom: 34,
+        screenSize: Size(400, 800),
+        insets: EdgeInsets.only(top: 34),
+        source: NotchGeometrySource.nativePath,
+        confidence: NotchGeometryConfidence.exact,
+        shape: NotchShape.punchHole,
+        hasCutout: true,
+      );
+
+      provider.cachedForTesting = cachedGeo;
+      addTearDown(() => provider.clear());
+
+      // Build context with iOS platform and safe area of 59pt (iPhone Dynamic Island)
+      late NotchGeometry detected;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(platform: TargetPlatform.iOS),
+          home: MediaQuery(
+            data: const MediaQueryData(
+              size: Size(393, 852),
+              devicePixelRatio: 3.0,
+              padding: EdgeInsets.only(top: 59),
+            ),
+            child: Builder(
+              builder: (context) {
+                detected = NotchGeometryDetector.detect(context);
+                return const SizedBox();
+              },
+            ),
+          ),
+        ),
+      );
+
+      // Must detect iOS Dynamic Island profile, NOT the Android cached punch hole
+      expect(detected.source, NotchGeometrySource.profile);
+      expect(detected.shape, NotchShape.pill);
+      expect(detected.screenSize, const Size(393, 852));
+    });
+
+    testWidgets('NotchGeometryDetector.detect ignores cached Android geometry when screen size changes', (tester) async {
+      final provider = AndroidCutoutGeometryProvider.instance;
+      const cachedGeo = NotchGeometry(
+        bounds: Rect.fromLTWH(188, 10, 24, 24),
+        center: Offset(200, 22),
+        width: 24,
+        height: 24,
+        top: 10,
+        bottom: 34,
+        screenSize: Size(400, 800),
+        insets: EdgeInsets.only(top: 34),
+        source: NotchGeometrySource.nativePath,
+        confidence: NotchGeometryConfidence.exact,
+        shape: NotchShape.punchHole,
+        hasCutout: true,
+      );
+
+      provider.cachedForTesting = cachedGeo;
+      addTearDown(() => provider.clear());
+
+      late NotchGeometry detectedLandscape;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(platform: TargetPlatform.android),
+          home: MediaQuery(
+            data: const MediaQueryData(
+              size: Size(800, 400),
+              devicePixelRatio: 1.0,
+              padding: EdgeInsets.only(left: 34),
+            ),
+            child: Builder(
+              builder: (context) {
+                detectedLandscape = NotchGeometryDetector.detect(context);
+                return const SizedBox();
+              },
+            ),
+          ),
+        ),
+      );
+
+      // When size differs, it must not return the stale 400x800 portrait cache
+      expect(detectedLandscape.screenSize, const Size(800, 400));
+    });
+
+    test('AndroidCutoutGeometryProvider handles concurrent load requests safely', () async {
+      final provider = AndroidCutoutGeometryProvider();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        provider.channel,
+        (call) async {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          return <String, dynamic>{
+            'hasCutout': true,
+            'hasPath': true,
+            'pathLeft': 188.0,
+            'pathTop': 10.0,
+            'pathRight': 212.0,
+            'pathBottom': 34.0,
+          };
+        },
+      );
+
+      const mq = MediaQueryData(
+        size: Size(400, 800),
+        devicePixelRatio: 1.0,
+        viewPadding: EdgeInsets.only(top: 34),
+      );
+
+      // Trigger two concurrent load calls
+      final future1 = provider.load(mediaQuery: mq);
+      final future2 = provider.load(mediaQuery: mq);
+
+      final results = await Future.wait([future1, future2]);
+      expect(results[0], isNotNull);
+      expect(results[1], isNotNull);
+      expect(results[0], equals(results[1]));
+      expect(provider.cached, isNotNull);
+      provider.clear();
+    });
+
+    testWidgets('DynamicNotifications switches rendering mode and repaints correctly', (tester) async {
+      final ctrl = DynamicNotificationController();
+      const testGeometry = NotchGeometry(
+        bounds: Rect.fromLTWH(188, 8, 24, 24),
+        center: Offset(200, 20),
+        width: 24,
+        height: 24,
+        top: 8,
+        bottom: 32,
+        screenSize: Size(400, 800),
+        insets: EdgeInsets.only(top: 32),
+        source: NotchGeometrySource.displayFeature,
+        confidence: NotchGeometryConfidence.exact,
+        shape: NotchShape.punchHole,
+        hasCutout: true,
+      );
+
+      // Build with standard mode at progress 0.3
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DynamicNotifications(
+            controller: ctrl,
+            geometryOverride: testGeometry,
+            progressOverride: 0.3,
+            renderMode: NotificationRenderMode.standard,
+            child: const Scaffold(body: Center(child: Text('Content'))),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      var customPaint = tester.widget<CustomPaint>(
+        find.byKey(const ValueKey('dynamic-notification-shape')),
+      );
+      expect(customPaint.painter, isNotNull);
+
+      // Switch to experimental liquid mode at same progress 0.3
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DynamicNotifications(
+            controller: ctrl,
+            geometryOverride: testGeometry,
+            progressOverride: 0.3,
+            renderMode: NotificationRenderMode.experimentalLiquid,
+            child: const Scaffold(body: Center(child: Text('Content'))),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      customPaint = tester.widget<CustomPaint>(
+        find.byKey(const ValueKey('dynamic-notification-shape')),
+      );
+      expect(customPaint.painter, isNotNull);
+      expect(tester.takeException(), isNull);
+    });
   });
 }
