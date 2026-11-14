@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' show lerpDouble;
 
+import 'package:clock/clock.dart';
+import 'package:flutter/gestures.dart' show VelocityTracker;
 import 'package:flutter/material.dart';
 
 import 'src/notch_geometry.dart';
@@ -62,6 +64,13 @@ class DynamicNotificationStyle {
 class DynamicNotificationController {
   _DynamicNotificationsState? _host;
 
+  /// The current user interaction state of the active notification.
+  NotificationInteractionState get interactionState =>
+      _host?._interactionState ?? NotificationInteractionState.idle;
+
+  /// The current vertical drag offset in logical pixels.
+  double get dragOffset => _host?._drag ?? 0.0;
+
   /// Shows [notification] once the host is mounted.
   ///
   /// While another card exits, the most recent call replaces the pending card.
@@ -87,6 +96,76 @@ enum NotificationRenderMode {
   standard,
 }
 
+/// Interaction state of the active dynamic notification.
+enum NotificationInteractionState {
+  /// Notification is resting at its settled position with no active user touch.
+  idle,
+
+  /// User is actively touching and dragging the notification vertically.
+  dragging,
+
+  /// User is holding the notification in place (or touching without moving).
+  holding,
+
+  /// Notification was released beyond the dismissal threshold or flung upward and is exiting.
+  dismissing,
+
+  /// Notification was tapped or swiped down beyond the open threshold; open callback is triggered.
+  opening,
+
+  /// Notification was released below threshold and is smoothly springing back to resting position.
+  returning,
+}
+
+/// Configuration for interactive gesture thresholds and physics.
+class NotificationGestureConfig {
+  const NotificationGestureConfig({
+    this.dismissThreshold = -32.0,
+    this.dismissVelocityThreshold = -320.0,
+    this.openThreshold = 44.0,
+    this.openVelocityThreshold = 320.0,
+    this.maxUpwardDrag = -80.0,
+    this.maxDownwardDrag = 120.0,
+    this.maxTapDuration = const Duration(milliseconds: 350),
+    this.springBackDuration = const Duration(milliseconds: 260),
+    this.springBackCurve = Curves.easeOutCubic,
+  });
+
+  /// Upward drag distance in logical pixels required to trigger dismissal on release.
+  /// Should be a negative value. Defaults to -32.0.
+  final double dismissThreshold;
+
+  /// Upward fling velocity in logical pixels per second required to trigger dismissal.
+  /// Should be a negative value. Defaults to -320.0.
+  final double dismissVelocityThreshold;
+
+  /// Downward drag distance in logical pixels required to trigger the open action on release.
+  /// Should be a positive value. Defaults to 44.0.
+  final double openThreshold;
+
+  /// Downward fling velocity in logical pixels per second required to trigger open.
+  /// Should be a positive value. Defaults to 320.0.
+  final double openVelocityThreshold;
+
+  /// Maximum upward drag displacement in logical pixels. Defaults to -80.0.
+  final double maxUpwardDrag;
+
+  /// Maximum downward drag displacement in logical pixels. Defaults to 120.0.
+  final double maxDownwardDrag;
+
+  /// Maximum touch duration to be recognized as a tap instead of a long hold.
+  /// Defaults to 350 milliseconds.
+  final Duration maxTapDuration;
+
+  /// Duration of the spring-back animation when returning to resting position.
+  /// Defaults to 260 milliseconds.
+  final Duration springBackDuration;
+
+  /// Animation curve used for the spring-back return.
+  /// Defaults to [Curves.easeOutCubic].
+  final Curve springBackCurve;
+}
+
 /// Places a notification above [child] without blocking touches outside it.
 ///
 /// Install once in MaterialApp.builder, outside the navigator.
@@ -100,6 +179,7 @@ class DynamicNotifications extends StatefulWidget {
     this.debugShowGuides = false,
     this.progressOverride,
     this.renderMode = NotificationRenderMode.standard,
+    this.gestureConfig = const NotificationGestureConfig(),
   }) : assert(originLift >= 0 && originLift < double.infinity);
 
   final DynamicNotificationController controller;
@@ -127,19 +207,39 @@ class DynamicNotifications extends StatefulWidget {
   /// Defaults to [NotificationRenderMode.standard].
   final NotificationRenderMode renderMode;
 
+  /// Configuration for interactive gesture thresholds and physics.
+  final NotificationGestureConfig gestureConfig;
+
   @override
   State<DynamicNotifications> createState() => _DynamicNotificationsState();
 }
 
 class _DynamicNotificationsState extends State<DynamicNotifications>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _animation;
+  late final AnimationController _springController;
+  late Animation<double> _springAnimation;
+
   DynamicNotification? _current;
   DynamicNotification? _pending;
   Timer? _timer;
+  DateTime? _timerStart;
+  Duration? _timerRemaining;
+  bool _pointerDown = false;
+  int? _activePointerId;
+  bool _isDragging = false;
+  double _dragStartY = 0;
+  double _dragBaseY = 0;
+  VelocityTracker? _velocityTracker;
+
   bool _exiting = false;
   bool _reduceMotion = false;
   double _drag = 0;
+  NotificationInteractionState _interactionState =
+      NotificationInteractionState.idle;
+  DateTime? _pointerDownTime;
+  Offset? _pointerDownPosition;
+  bool _pointerMoved = false;
 
   @override
   void initState() {
@@ -150,6 +250,24 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
       duration: const Duration(milliseconds: 780),
       reverseDuration: const Duration(milliseconds: 640),
     )..addStatusListener(_onStatus);
+
+    _springController = AnimationController(
+      vsync: this,
+      duration: widget.gestureConfig.springBackDuration,
+    )..addListener(() {
+        setState(() => _drag = _springAnimation.value);
+      })..addStatusListener((status) {
+        if (status == AnimationStatus.completed) {
+          setState(() {
+            _drag = 0.0;
+            _dragBaseY = 0.0;
+            _isDragging = false;
+            _interactionState = NotificationInteractionState.idle;
+          });
+          _resumeTimer();
+        }
+      });
+    _springAnimation = const AlwaysStoppedAnimation(0.0);
 
     if (widget.progressOverride != null) {
       _current = const DynamicNotification(
@@ -174,6 +292,10 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
     if (oldWidget.controller != widget.controller) {
       _attachController();
       oldWidget.controller._host = null;
+    }
+    if (oldWidget.gestureConfig.springBackDuration !=
+        widget.gestureConfig.springBackDuration) {
+      _springController.duration = widget.gestureConfig.springBackDuration;
     }
     if (oldWidget.progressOverride != widget.progressOverride) {
       if (widget.progressOverride != null) {
@@ -214,10 +336,25 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
       _exit();
       return;
     }
+    _activePointerId = null;
+    _pointerDown = false;
+    _springController.stop();
+    _timer?.cancel();
+    _timer = null;
+    _timerStart = null;
+    _timerRemaining = null;
+    _pointerDownTime = null;
+    _pointerDownPosition = null;
+    _pointerMoved = false;
+    _isDragging = false;
+    _velocityTracker = null;
+    _dragStartY = 0;
+    _dragBaseY = 0;
     setState(() {
       _current = notification;
       _exiting = false;
       _drag = 0;
+      _interactionState = NotificationInteractionState.idle;
     });
     if (_reduceMotion) {
       _animation.value = 1;
@@ -228,8 +365,17 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
 
   void _exit() {
     if (_current == null || _exiting) return;
+    _activePointerId = null;
+    _pointerDown = false;
     _timer?.cancel();
-    setState(() => _exiting = true);
+    _timer = null;
+    _springController.stop();
+    setState(() {
+      _exiting = true;
+      if (_interactionState != NotificationInteractionState.opening) {
+        _interactionState = NotificationInteractionState.dismissing;
+      }
+    });
     if (_animation.value == 0) {
       _animation.stop();
       _finishExit();
@@ -240,10 +386,34 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
     }
   }
 
+  void _open() {
+    if (_exiting ||
+        _interactionState == NotificationInteractionState.dismissing) {
+      return;
+    }
+    setState(() => _interactionState = NotificationInteractionState.opening);
+    _springController.stop();
+    final callback = _current?.onTap;
+    _exit();
+    callback?.call();
+  }
+
+  void _onTimerExpired() {
+    if (_current == null || _exiting) return;
+    if (_pointerDown || _interactionState != NotificationInteractionState.idle) {
+      return;
+    }
+    _exit();
+  }
+
   void _onStatus(AnimationStatus status) {
     if (status == AnimationStatus.completed && !_exiting) {
       final duration = _current?.duration;
-      if (duration != null) _timer = Timer(duration, _exit);
+      if (duration != null) {
+        _timerRemaining = duration;
+        _timerStart = clock.now();
+        _timer = Timer(duration, _onTimerExpired);
+      }
     }
     if (status == AnimationStatus.dismissed && _exiting) _finishExit();
   }
@@ -251,24 +421,205 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
   void _finishExit() {
     final next = _pending;
     _pending = null;
+    _timer?.cancel();
+    _timer = null;
+    _timerStart = null;
+    _timerRemaining = null;
+    _isDragging = false;
+    _activePointerId = null;
+    _pointerDown = false;
+    _velocityTracker = null;
+    _dragStartY = 0;
+    _dragBaseY = 0;
+    _springController.stop();
     setState(() {
       _current = null;
       _exiting = false;
+      _drag = 0;
+      _interactionState = NotificationInteractionState.idle;
+      _pointerDownTime = null;
+      _pointerDownPosition = null;
+      _pointerMoved = false;
     });
     if (next != null) _show(next);
   }
 
-  void _tap() {
+  void _springBack() {
+    if (_drag == 0) {
+      setState(() => _interactionState = NotificationInteractionState.idle);
+      _resumeTimer();
+      return;
+    }
+    setState(() => _interactionState = NotificationInteractionState.returning);
+    _springAnimation = Tween<double>(
+      begin: _drag,
+      end: 0.0,
+    ).animate(
+      CurvedAnimation(
+        parent: _springController,
+        curve: widget.gestureConfig.springBackCurve,
+      ),
+    );
+    _springController.forward(from: 0.0);
+  }
+
+  void _pauseTimer() {
+    if (_timer != null && _timer!.isActive) {
+      _timer!.cancel();
+      _timer = null;
+      if (_timerStart != null && _timerRemaining != null) {
+        final elapsed = clock.now().difference(_timerStart!);
+        _timerRemaining = _timerRemaining! - elapsed;
+        if (_timerRemaining! < Duration.zero) {
+          _timerRemaining = Duration.zero;
+        }
+      }
+    }
+  }
+
+  void _resumeTimer() {
+    if (_current == null ||
+        _exiting ||
+        _pointerDown ||
+        _interactionState != NotificationInteractionState.idle) {
+      return;
+    }
+    if (_timer != null && _timer!.isActive) return;
+    final remaining = _timerRemaining;
+    if (remaining != null) {
+      final effectiveDuration = remaining <= const Duration(milliseconds: 400)
+          ? const Duration(milliseconds: 400)
+          : remaining;
+      _timerRemaining = effectiveDuration;
+      _timerStart = clock.now();
+      _timer = Timer(effectiveDuration, _onTimerExpired);
+    }
+  }
+
+  void _handlePointerDown(PointerDownEvent event) {
     if (_exiting) return;
-    final callback = _current?.onTap;
-    _exit();
-    callback?.call();
+    if (_activePointerId != null) return;
+    _activePointerId = event.pointer;
+    _pointerDown = true;
+    _pointerDownTime = clock.now();
+    _pointerDownPosition = event.position;
+    _pointerMoved = false;
+    _dragStartY = event.position.dy;
+    _dragBaseY = _drag;
+    _isDragging = false;
+    _velocityTracker = VelocityTracker.withKind(event.kind);
+    _velocityTracker?.addPosition(event.timeStamp, event.position);
+    _springController.stop();
+    _pauseTimer();
+    setState(() => _interactionState = NotificationInteractionState.holding);
+  }
+
+  void _handlePointerMove(PointerMoveEvent event) {
+    if (_exiting || !_pointerDown || event.pointer != _activePointerId) return;
+    _velocityTracker?.addPosition(event.timeStamp, event.position);
+    if (_pointerDownPosition != null &&
+        (event.position - _pointerDownPosition!).distance > 18.0) {
+      _pointerMoved = true;
+    }
+    final deltaY = event.position.dy - _dragStartY;
+    if (!_isDragging && (_dragBaseY != 0 || deltaY.abs() > 4.0)) {
+      _isDragging = true;
+    }
+    if (_isDragging) {
+      final newDrag = (_dragBaseY + deltaY).clamp(
+        widget.gestureConfig.maxUpwardDrag,
+        widget.gestureConfig.maxDownwardDrag,
+      );
+      setState(() {
+        _interactionState = NotificationInteractionState.dragging;
+        _drag = newDrag;
+      });
+    }
+  }
+
+  void _handlePointerUp(PointerUpEvent event) {
+    if (event.pointer != _activePointerId) return;
+    _activePointerId = null;
+    _pointerDown = false;
+    if (_exiting) return;
+    _velocityTracker?.addPosition(event.timeStamp, event.position);
+    final velocity =
+        _velocityTracker?.getVelocityEstimate()?.pixelsPerSecond.dy ?? 0.0;
+    _velocityTracker = null;
+
+    if (_isDragging || _drag != 0) {
+      final config = widget.gestureConfig;
+
+      // Upward dismissal: crossed threshold upward, or flung upward while displaced upward
+      if (_drag <= config.dismissThreshold ||
+          (_drag <= 0 && velocity <= config.dismissVelocityThreshold)) {
+        _exit();
+        return;
+      }
+
+      // Downward open: crossed threshold downward, or flung downward while displaced downward
+      if (_drag >= config.openThreshold ||
+          (_drag >= 0 && velocity >= config.openVelocityThreshold)) {
+        _open();
+        return;
+      }
+
+      // Spring back
+      _springBack();
+      return;
+    }
+
+    setState(() => _interactionState = NotificationInteractionState.idle);
+    _resumeTimer();
+  }
+
+  void _handlePointerCancel(PointerCancelEvent event) {
+    if (event.pointer != _activePointerId) return;
+    _activePointerId = null;
+    _pointerDown = false;
+    _pointerDownPosition = null;
+    _pointerMoved = false;
+    _isDragging = false;
+    _velocityTracker = null;
+    if (_exiting) return;
+    if (_drag != 0) {
+      _springBack();
+    } else {
+      setState(() => _interactionState = NotificationInteractionState.idle);
+      _resumeTimer();
+    }
+  }
+
+  void _onTap() {
+    if (_exiting ||
+        _interactionState == NotificationInteractionState.dismissing ||
+        _interactionState == NotificationInteractionState.opening) {
+      return;
+    }
+    if (_isDragging || _drag != 0 || _pointerMoved) {
+      _pointerMoved = false;
+      return;
+    }
+    final now = clock.now();
+    final downTime = _pointerDownTime;
+    _pointerDownTime = null;
+    _pointerDownPosition = null;
+    _pointerMoved = false;
+    if (downTime != null &&
+        now.difference(downTime) >= widget.gestureConfig.maxTapDuration) {
+      // Long press / hold release: do not trigger tap!
+      setState(() => _interactionState = NotificationInteractionState.idle);
+      _resumeTimer();
+      return;
+    }
+    _open();
   }
 
   @override
   void dispose() {
     widget.controller._host = null;
     _timer?.cancel();
+    _springController.dispose();
     _animation.dispose();
     super.dispose();
   }
@@ -372,32 +723,20 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
             container: true,
             liveRegion: true,
             label: [notification.title, ?notification.message].join('\n'),
-            onTap: _tap,
+            onTap: _open,
             onDismiss: _exit,
             excludeSemantics: notification.contentBuilder == null,
             explicitChildNodes: notification.contentBuilder != null,
-            child: GestureDetector(
-              excludeFromSemantics: true,
-              behavior: HitTestBehavior.opaque,
-              onTap: _tap,
-              onVerticalDragUpdate: (details) {
-                if (_exiting) return;
-                setState(
-                  () => _drag = (_drag + details.delta.dy).clamp(-48, 0),
-                );
-              },
-              onVerticalDragEnd: (details) {
-                if (_exiting) return;
-                if (_drag < -18 || (details.primaryVelocity ?? 0) < -420) {
-                  _exit();
-                } else {
-                  setState(() => _drag = 0);
-                }
-              },
-              onVerticalDragCancel: () {
-                if (!_exiting) setState(() => _drag = 0);
-              },
-              child: ClipRRect(
+            child: Listener(
+              onPointerDown: _handlePointerDown,
+              onPointerMove: _handlePointerMove,
+              onPointerUp: _handlePointerUp,
+              onPointerCancel: _handlePointerCancel,
+              child: GestureDetector(
+                excludeFromSemantics: true,
+                behavior: HitTestBehavior.opaque,
+                onTap: _onTap,
+                child: ClipRRect(
                 borderRadius: BorderRadius.circular(style.borderRadius ?? 36),
                 child: Padding(
                   padding: style.padding,
@@ -460,14 +799,15 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
               ),
             ),
           ),
+          ),
           builder: (context, child) {
             final progress = widget.progressOverride ?? _animation.value;
             final reveal = compact ? progress : _reveal.transform(progress);
             final interactive = !_exiting && reveal == 1;
-            final offset = Offset(
-              0,
-              compact ? 0 : math.max(-4, _drag) * _expand.transform(progress),
-            );
+            final effectiveDrag = compact
+                ? 0.0
+                : (_exiting ? _drag * _animation.value : _drag);
+            final offset = Offset(0, effectiveDrag);
             return Stack(
               clipBehavior: Clip.none,
               children: [
@@ -1078,20 +1418,26 @@ class _NotificationPainter extends CustomPainter {
         ? math.max(28.0, (tailRight - tailLeft) / 2 + 16.0)
         : 28.0;
     final clipLeft = tailLeft != null
-        ? math.min(-24.0, math.min(rect.left, centerX - tailPad))
-        : math.min(-24.0, rect.left);
+        ? math.min(-24.0, math.min(rect.left - 24.0, centerX - tailPad))
+        : math.min(-24.0, rect.left - 24.0);
     final clipRight = tailRight != null
-        ? math.max(size.width + 24.0, math.max(rect.right, centerX + tailPad))
-        : math.max(size.width + 24.0, rect.right);
+        ? math.max(size.width + 24.0, math.max(rect.right + 24.0, centerX + tailPad))
+        : math.max(size.width + 24.0, rect.right + 24.0);
     final minPathY = tailTopY ?? 0.0;
     final maxAnchorOverlap = math.max(0.0, anchorTop);
-    final clipTop = hasCutout
+    final screenTop = -maxAnchorOverlap;
+    final baseClipTop = hasCutout
         ? math.min(minPathY, -math.min(16.0, maxAnchorOverlap))
         : -math.min(16.0, maxAnchorOverlap);
+    final clipTop = math.max(
+      screenTop,
+      math.min(baseClipTop, rect.top - 24.0),
+    );
+    final clipBottom = math.max(size.height + 24.0, rect.bottom + 24.0);
 
     canvas.save();
     canvas.clipRect(
-      Rect.fromLTRB(clipLeft, clipTop, clipRight, size.height + 24),
+      Rect.fromLTRB(clipLeft, clipTop, clipRight, clipBottom),
     );
     final shadowOpacity = expand > 0
         ? lerpDouble(0.20, 0.26, expand)!
