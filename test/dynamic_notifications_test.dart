@@ -1706,4 +1706,523 @@ void main() {
       await tester.pumpAndSettle();
     },
   );
+
+  group('Interactive Swipe-Up Reverse Morph Into Native Notch / Dynamic Island', () {
+    testWidgets('1. Initial expanded state: morphProgress == 0.0 and card full width', (tester) async {
+      await mount(tester);
+      controller.show(
+        const DynamicNotification(
+          title: 'Morph Test Initial',
+          message: 'Fully expanded card',
+          duration: null,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(controller.morphProgress, 0.0);
+      expect(controller.dragOffset, 0.0);
+      expect(controller.interactionState, NotificationInteractionState.idle);
+
+      final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+      final shapeSize = tester.getSize(shape);
+      expect(shapeSize.width, greaterThan(300.0));
+      expect(find.text('Morph Test Initial').hitTestable(), findsOneWidget);
+    });
+
+    testWidgets('2. Small upward drag: morphProgress ~ 0.25, content visible, width begins contracting', (tester) async {
+      await mount(tester);
+      controller.show(
+        const DynamicNotification(
+          title: 'Small Morph Drag',
+          message: 'Progress 0.25',
+          duration: null,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('Small Morph Drag')),
+      );
+      await gesture.moveBy(const Offset(0, -20));
+      await tester.pump();
+
+      expect(controller.dragOffset, -20.0);
+      expect(controller.morphProgress, closeTo(0.25, 0.01));
+      expect(controller.interactionState, NotificationInteractionState.dragging);
+      expect(find.text('Small Morph Drag').hitTestable(), findsOneWidget);
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('3. Medium upward drag: morphProgress == 0.50, content opacity is 0.0', (tester) async {
+      await mount(tester);
+      controller.show(
+        const DynamicNotification(
+          title: 'Medium Morph Drag',
+          message: 'Progress 0.50',
+          duration: null,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('Medium Morph Drag')),
+      );
+      await gesture.moveBy(const Offset(0, -40));
+      await tester.pump();
+
+      expect(controller.dragOffset, -40.0);
+      expect(controller.morphProgress, closeTo(0.50, 0.01));
+      // Content has faded out completely (contentOpacity <= 0)
+      expect(find.text('Medium Morph Drag').hitTestable(), findsNothing);
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('4. Near-complete upward morph: morphProgress == 0.85, compact pill near anchor', (tester) async {
+      await mount(tester);
+      controller.show(
+        const DynamicNotification(
+          title: 'Near Complete Drag',
+          message: 'Progress 0.85',
+          duration: null,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('Near Complete Drag')),
+      );
+      await gesture.moveBy(const Offset(0, -68));
+      await tester.pump();
+
+      expect(controller.dragOffset, -68.0);
+      expect(controller.morphProgress, closeTo(0.85, 0.01));
+      expect(find.text('Near Complete Drag').hitTestable(), findsNothing);
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('5. Complete upward morph: reaches maxUpwardDrag (1.0) and completes exit on release', (tester) async {
+      await mount(tester);
+      controller.show(
+        const DynamicNotification(
+          title: 'Max Morph Drag',
+          message: 'Progress 1.0',
+          duration: null,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('Max Morph Drag')),
+      );
+      await gesture.moveBy(const Offset(0, -85)); // exceeds -80 maxUpwardDrag
+      await tester.pump();
+
+      expect(controller.dragOffset, -80.0);
+      expect(controller.morphProgress, 1.0);
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(controller.interactionState, NotificationInteractionState.idle);
+      expect(find.text('Max Morph Drag'), findsNothing);
+    });
+
+    testWidgets('6. Real-time direction reversal: upward drag reverses downward smoothly restoring card and content', (tester) async {
+      await mount(tester);
+      var opened = 0;
+      controller.show(
+        DynamicNotification(
+          title: 'Reversal Drag',
+          message: 'Real-time recovery',
+          duration: null,
+          onTap: () => opened++,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('Reversal Drag')),
+      );
+
+      // 1. Drag upward by -45px (content fades)
+      await gesture.moveBy(const Offset(0, -45));
+      await tester.pump();
+      expect(controller.dragOffset, -45.0);
+      expect(controller.morphProgress, closeTo(45.0 / 80.0, 0.01));
+      expect(find.text('Reversal Drag').hitTestable(), findsNothing);
+
+      // 2. Reverse direction downward to +20px without releasing pointer
+      await gesture.moveBy(const Offset(0, 65)); // -45 + 65 = +20
+      await tester.pump();
+      expect(controller.dragOffset, 20.0);
+      expect(controller.morphProgress, 0.0);
+      expect(find.text('Reversal Drag').hitTestable(), findsOneWidget);
+
+      // 3. Move back to origin 0px and release
+      await gesture.moveBy(const Offset(0, -20));
+      await tester.pump();
+      expect(controller.dragOffset, 0.0);
+      expect(controller.morphProgress, 0.0);
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(opened, 0);
+      expect(find.text('Reversal Drag'), findsOneWidget);
+    });
+
+    testWidgets('7. Incomplete upward drag springs back to resting position without dismissing', (tester) async {
+      await mount(tester);
+      controller.show(
+        const DynamicNotification(
+          title: 'Spring Back Morph',
+          duration: null,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Drag upward by -16px (below -32 threshold)
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('Spring Back Morph')),
+      );
+      await gesture.moveBy(const Offset(0, -16));
+      await tester.pump();
+      expect(controller.dragOffset, -16.0);
+
+      await gesture.up();
+      expect(controller.interactionState, NotificationInteractionState.returning);
+
+      await tester.pumpAndSettle();
+      expect(controller.interactionState, NotificationInteractionState.idle);
+      expect(controller.dragOffset, 0.0);
+      expect(controller.morphProgress, 0.0);
+      expect(find.text('Spring Back Morph'), findsOneWidget);
+    });
+
+    testWidgets('8. Fast upward flick triggers reverse morph dismissal even from small distance', (tester) async {
+      await mount(tester);
+      controller.show(
+        const DynamicNotification(
+          title: 'Flick Dismiss',
+          duration: null,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Small drag -10px, but fast upward fling
+      await tester.fling(find.text('Flick Dismiss'), const Offset(0, -10), 1000.0);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Flick Dismiss'), findsNothing);
+      expect(controller.interactionState, NotificationInteractionState.idle);
+    });
+
+    testWidgets('9. Slow upward drag crossing threshold dismisses into notch', (tester) async {
+      await mount(tester);
+      controller.show(
+        const DynamicNotification(
+          title: 'Slow Threshold Drag',
+          duration: null,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('Slow Threshold Drag')),
+      );
+      // Drag past -32 threshold (e.g. -40px) slowly
+      await gesture.moveBy(const Offset(0, -40));
+      await tester.pump();
+      expect(controller.dragOffset, -40.0);
+
+      await gesture.up();
+      expect(controller.interactionState, NotificationInteractionState.dismissing);
+
+      await tester.pumpAndSettle();
+      expect(find.text('Slow Threshold Drag'), findsNothing);
+    });
+
+    testWidgets('10. Pointer cancellation during morph returns safely to resting state', (tester) async {
+      await mount(tester);
+      controller.show(
+        const DynamicNotification(
+          title: 'Cancel Morph',
+          duration: null,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('Cancel Morph')),
+      );
+      await gesture.moveBy(const Offset(0, -35));
+      await tester.pump();
+      expect(controller.dragOffset, -35.0);
+
+      await gesture.cancel();
+      await tester.pump();
+      expect(controller.interactionState, NotificationInteractionState.returning);
+
+      await tester.pumpAndSettle();
+      expect(controller.interactionState, NotificationInteractionState.idle);
+      expect(controller.dragOffset, 0.0);
+      expect(find.text('Cancel Morph'), findsOneWidget);
+    });
+
+    testWidgets('11. No detached text: text stays strictly inside card bounds throughout morph', (tester) async {
+      await mount(tester);
+      controller.show(
+        const DynamicNotification(
+          title: 'Attached Content Morph',
+          message: 'Guaranteed no floating text',
+          duration: null,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+      final initialShapeRect = tester.getRect(shape);
+      final textRect = tester.getRect(find.text('Attached Content Morph'));
+
+      expect(textRect.top, greaterThanOrEqualTo(initialShapeRect.top));
+      expect(textRect.bottom, lessThanOrEqualTo(initialShapeRect.bottom));
+
+      // Drag upward -20px (morphProgress = 0.25)
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('Attached Content Morph')),
+      );
+      await gesture.moveBy(const Offset(0, -20));
+      await tester.pump();
+
+      // At -20px, text moved up by -20px and remains inside
+      final draggedTextRect = tester.getRect(find.text('Attached Content Morph'));
+      expect(draggedTextRect.center.dy, closeTo(textRect.center.dy - 20.0, 1.0));
+
+      // Drag to -45px (morphProgress = 0.56, opacity becomes 0.0)
+      await gesture.moveBy(const Offset(0, -25));
+      await tester.pump();
+      expect(find.text('Attached Content Morph').hitTestable(), findsNothing);
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('12. Background remains attached during morph at multiple progress steps', (tester) async {
+      await mount(tester);
+      controller.show(
+        const DynamicNotification(
+          title: 'Background Attachment',
+          message: 'Continuous surface',
+          duration: null,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+      final shapeSize = tester.getSize(shape);
+      final center = shapeSize.width / 2;
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('Background Attachment')),
+      );
+
+      // Step at -20px
+      await gesture.moveBy(const Offset(0, -20));
+      await tester.pump();
+      expect(
+        shape,
+        paints..path(
+          color: Colors.white,
+          includes: [Offset(center, shapeSize.height / 2 - 20.0)],
+        ),
+      );
+
+      // Step at -35px
+      await gesture.moveBy(const Offset(0, -15));
+      await tester.pump();
+      expect(
+        shape,
+        paints..path(
+          color: Colors.white,
+          includes: [Offset(center, shapeSize.height / 2 - 35.0)],
+        ),
+      );
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('13. Dismissal does not trigger onTap open callback', (tester) async {
+      await mount(tester);
+      var openCalls = 0;
+      controller.show(
+        DynamicNotification(
+          title: 'Dismissal No Open',
+          duration: null,
+          onTap: () => openCalls++,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('Dismissal No Open')),
+      );
+      await gesture.moveBy(const Offset(0, -45));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(openCalls, 0);
+      expect(find.text('Dismissal No Open'), findsNothing);
+    });
+
+    testWidgets('14. Downward open behavior remains completely intact with reverse morph enabled', (tester) async {
+      await mount(tester);
+      var openCalls = 0;
+      controller.show(
+        DynamicNotification(
+          title: 'Downward Open Intact',
+          duration: null,
+          onTap: () => openCalls++,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('Downward Open Intact')),
+      );
+      await gesture.moveBy(const Offset(0, 50));
+      await tester.pump();
+      expect(controller.dragOffset, 50.0);
+      expect(controller.morphProgress, 0.0);
+
+      await gesture.up();
+      expect(controller.interactionState, NotificationInteractionState.opening);
+      await tester.pumpAndSettle();
+
+      expect(openCalls, 1);
+      expect(find.text('Downward Open Intact'), findsNothing);
+    });
+
+    testWidgets('15. Tap-to-open remains completely intact without dragging', (tester) async {
+      await mount(tester);
+      var openCalls = 0;
+      controller.show(
+        DynamicNotification(
+          title: 'Tap Open Intact',
+          duration: null,
+          onTap: () => openCalls++,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Tap Open Intact'));
+      await tester.pumpAndSettle();
+
+      expect(openCalls, 1);
+      expect(find.text('Tap Open Intact'), findsNothing);
+    });
+
+    testWidgets('16. Long-press / hold behavior remains intact and pauses auto-dismiss timer', (tester) async {
+      await mount(tester);
+      var openCalls = 0;
+      controller.show(
+        DynamicNotification(
+          title: 'Hold Intact',
+          duration: const Duration(seconds: 1),
+          onTap: () => openCalls++,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('Hold Intact')),
+      );
+      expect(controller.interactionState, NotificationInteractionState.holding);
+
+      // Hold for 1500ms (exceeding 1000ms duration)
+      await tester.pump(const Duration(milliseconds: 1500));
+      expect(find.text('Hold Intact'), findsOneWidget); // Did not auto-dismiss!
+
+      // Release without moving: recognized as hold, does not trigger tap
+      await gesture.up();
+      await tester.pump();
+      expect(openCalls, 0);
+
+      // After release, remaining timer expires and dismisses
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+      expect(find.text('Hold Intact'), findsNothing);
+    });
+
+    testWidgets('17. Notch geometry alignment on asymmetric off-center punch hole', (tester) async {
+      await mount(
+        tester,
+        platform: TargetPlatform.android,
+        padding: const EdgeInsets.only(top: 40, bottom: 20),
+        displayFeatures: const [
+          DisplayFeature(
+            bounds: Rect.fromLTWH(48, 8, 24, 24),
+            type: DisplayFeatureType.cutout,
+            state: DisplayFeatureState.unknown,
+          ),
+        ],
+      );
+      controller.show(
+        const DynamicNotification(
+          title: 'Off Center Notch',
+          message: 'Morph to camera at x=60',
+          duration: null,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('Off Center Notch')),
+      );
+
+      // Drag up by -50px
+      await gesture.moveBy(const Offset(0, -50));
+      await tester.pump();
+
+      expect(controller.morphProgress, closeTo(50.0 / 80.0, 0.01));
+
+      final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+      expect(shape, findsOneWidget);
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('18. iOS safe-area fallback geometry handles reverse morph smoothly', (tester) async {
+      await mount(
+        tester,
+        padding: const EdgeInsets.only(top: 48),
+      );
+      controller.show(
+        const DynamicNotification(
+          title: 'iOS Fallback Morph',
+          duration: null,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('iOS Fallback Morph')),
+      );
+      await gesture.moveBy(const Offset(0, -45));
+      await tester.pump();
+
+      expect(controller.morphProgress, closeTo(45.0 / 80.0, 0.01));
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(find.text('iOS Fallback Morph'), findsNothing);
+    });
+  });
 }

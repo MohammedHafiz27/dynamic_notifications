@@ -71,6 +71,10 @@ class DynamicNotificationController {
   /// The current vertical drag offset in logical pixels.
   double get dragOffset => _host?._drag ?? 0.0;
 
+  /// The current reverse-morph progress into the camera notch / Dynamic Island,
+  /// normalized from 0.0 (fully expanded resting card) to 1.0 (fully collapsed into notch).
+  double get morphProgress => _host?._morphProgress ?? 0.0;
+
   /// Shows [notification] once the host is mounted.
   ///
   /// While another card exits, the most recent call replaces the pending card.
@@ -258,6 +262,10 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
         setState(() => _drag = _springAnimation.value);
       })..addStatusListener((status) {
         if (status == AnimationStatus.completed) {
+          if (_interactionState == NotificationInteractionState.dismissing) {
+            _finishExit();
+            return;
+          }
           setState(() {
             _drag = 0.0;
             _dragBaseY = 0.0;
@@ -365,6 +373,10 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
 
   void _exit() {
     if (_current == null || _exiting) return;
+    if (_drag < 0) {
+      _animateReverseMorphDismissal();
+      return;
+    }
     _activePointerId = null;
     _pointerDown = false;
     _timer?.cancel();
@@ -442,6 +454,50 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
       _pointerMoved = false;
     });
     if (next != null) _show(next);
+  }
+
+  double get _morphProgress {
+    if (_current == null) return 0.0;
+    if (_exiting && _drag == 0) {
+      return (1.0 - _animation.value).clamp(0.0, 1.0);
+    }
+    if (_drag < 0) {
+      final maxUp = widget.gestureConfig.maxUpwardDrag.abs();
+      if (maxUp <= 0) return 0.0;
+      return (-_drag / maxUp).clamp(0.0, 1.0);
+    }
+    return 0.0;
+  }
+
+  void _animateReverseMorphDismissal() {
+    if (_current == null || _exiting) return;
+    _activePointerId = null;
+    _pointerDown = false;
+    _timer?.cancel();
+    _timer = null;
+    _springController.stop();
+
+    setState(() {
+      _exiting = true;
+      _interactionState = NotificationInteractionState.dismissing;
+    });
+
+    final targetDrag = widget.gestureConfig.maxUpwardDrag;
+    if (_drag <= targetDrag || _reduceMotion) {
+      _finishExit();
+      return;
+    }
+
+    _springAnimation = Tween<double>(
+      begin: _drag,
+      end: targetDrag,
+    ).animate(
+      CurvedAnimation(
+        parent: _springController,
+        curve: Curves.easeInQuad,
+      ),
+    );
+    _springController.forward(from: 0.0);
   }
 
   void _springBack() {
@@ -553,7 +609,7 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
       // Upward dismissal: crossed threshold upward, or flung upward while displaced upward
       if (_drag <= config.dismissThreshold ||
           (_drag <= 0 && velocity <= config.dismissVelocityThreshold)) {
-        _exit();
+        _animateReverseMorphDismissal();
         return;
       }
 
@@ -806,8 +862,16 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
             final interactive = !_exiting && reveal == 1;
             final effectiveDrag = compact
                 ? 0.0
-                : (_exiting ? _drag * _animation.value : _drag);
+                : (_drag < 0
+                    ? _drag
+                    : (_exiting ? _drag * _animation.value : _drag));
             final offset = Offset(0, effectiveDrag);
+            final morphProgress = _morphProgress;
+            final contentOpacity =
+                reveal * math.max(0.0, 1.0 - morphProgress * 2.35);
+            final contentScale = lerpDouble(0.94, 1.0, reveal)! *
+                lerpDouble(1.0, 0.72, morphProgress)!;
+            final isInteractionLocked = !interactive || morphProgress > 0.35;
             return Stack(
               clipBehavior: Clip.none,
               children: [
@@ -828,6 +892,7 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
                         debugShowGuides: debugShowGuides,
                         renderMode: widget.renderMode,
                         isExiting: _exiting,
+                        morphProgress: morphProgress,
                       ),
                     ),
                   ),
@@ -837,13 +902,13 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
                   child: Transform.translate(
                     offset: offset,
                     child: IgnorePointer(
-                      ignoring: !interactive,
+                      ignoring: isInteractionLocked,
                       child: ExcludeSemantics(
-                        excluding: !interactive,
+                        excluding: isInteractionLocked,
                         child: Opacity(
-                          opacity: reveal,
+                          opacity: contentOpacity,
                           child: Transform.scale(
-                            scale: lerpDouble(0.94, 1, reveal)!,
+                            scale: contentScale,
                             child: child,
                           ),
                         ),
@@ -874,6 +939,7 @@ class _NotificationPainter extends CustomPainter {
     this.debugShowGuides = false,
     this.renderMode = NotificationRenderMode.standard,
     this.isExiting = false,
+    this.morphProgress = 0.0,
   });
 
   final double progress;
@@ -888,11 +954,52 @@ class _NotificationPainter extends CustomPainter {
   final bool debugShowGuides;
   final NotificationRenderMode renderMode;
   final bool isExiting;
+  final double morphProgress;
 
   @override
   void paint(Canvas canvas, Size size) {
     final cardHeight = size.height - landing;
     if (progress == 0 || size.width == 0 || cardHeight <= 0) return;
+
+    final hasCutout = geometry?.hasCutout ?? false;
+    final isPunchHole = hasCutout && geometry?.shape == NotchShape.punchHole;
+    final isPill = hasCutout && geometry?.shape == NotchShape.pill;
+
+    final dpr =
+        (geometry?.devicePixelRatio != null && geometry!.devicePixelRatio > 0)
+        ? geometry!.devicePixelRatio
+        : 1.0;
+    final targetOverlap = math.max(2.2, (2.2 * dpr).round() / dpr);
+
+    final cutoutBottomLocal = hasCutout ? (geometry!.bottom - anchorTop) : 0.0;
+    final cutoutCenterYLocal = hasCutout
+        ? (geometry!.center.dy - anchorTop)
+        : 0.0;
+    final cutoutRadiusX = (hasCutout && geometry!.width > 0)
+        ? geometry!.width / 2
+        : 12.0;
+    final cutoutRadiusY = (hasCutout && geometry!.height > 0)
+        ? geometry!.height / 2
+        : cutoutRadiusX;
+    final cutoutRadius = math.min(cutoutRadiusX, cutoutRadiusY);
+
+    final maxSafeOverlap = hasCutout
+        ? math.min(geometry!.bottom, cutoutRadiusY * 0.45)
+        : 0.0;
+    final deltaOverlap = hasCutout
+        ? math.min(targetOverlap, math.max(0.0, maxSafeOverlap))
+        : 0.0;
+
+    final yApex = cutoutBottomLocal - deltaOverlap;
+
+    final cutoutHalfWidth = (geometry?.width != null && geometry!.width > 0)
+        ? geometry!.width / 2
+        : 16.0;
+    final maxContactRadius = isPunchHole
+        ? math.min(14.0, math.max(8.0, cutoutRadius * 0.88))
+        : (isPill
+              ? math.min(52.0, math.max(28.0, cutoutHalfWidth * 0.78))
+              : math.min(48.0, math.max(16.0, cutoutHalfWidth * 0.78)));
 
     final fall = _fall.transform(progress);
     final expand = compact ? 1.0 : _expand.transform(progress);
@@ -933,73 +1040,83 @@ class _NotificationPainter extends CustomPainter {
     final dropSize =
         math.min(48.0, math.min(size.width, cardHeight)) *
         (compact ? 1.0 : (0.32 + 0.68 * grow));
-    final width = lerpDouble(dropSize / stretch, size.width, expand)!;
-    final height = lerpDouble(dropSize * stretch, cardHeight, expand)!;
-    final centerY = compact
-        ? cardHeight / 2
-        : lerpDouble(-12, landing + cardHeight / 2, fall)! + drag;
-    final centerX = size.width / 2 + anchorOffset * (1.0 - expand);
+
+    final double width;
+    final double height;
+    final double centerX;
+    final double centerY;
+    final double corner;
+
+    if (morphProgress > 0) {
+      final u = morphProgress.clamp(0.0, 1.0);
+      final kw = Curves.easeInOutCubic.transform(u);
+      final kh = Curves.easeInOut.transform(u);
+      final kx = Curves.easeInOut.transform(u);
+      final ky = Curves.easeInQuad.transform(u);
+      final kc = Curves.easeIn.transform(u);
+
+      final double targetWidth;
+      final double targetHeight;
+      if (isPunchHole) {
+        targetWidth = math.max(20.0, cutoutRadius * 2.0);
+        targetHeight = math.max(20.0, cutoutRadius * 2.0);
+      } else if (isPill) {
+        targetWidth = math.max(36.0, geometry!.width * 0.95);
+        targetHeight = math.max(20.0, geometry!.height);
+      } else if (hasCutout) {
+        targetWidth = math.max(28.0, geometry!.width * 0.85);
+        targetHeight = math.max(18.0, geometry!.height);
+      } else {
+        targetWidth = 36.0;
+        targetHeight = 18.0;
+      }
+      final targetCorner = targetHeight / 2.0;
+      final targetCenterX = size.width / 2 + anchorOffset;
+      final targetCenterY = hasCutout
+          ? (cutoutCenterYLocal - deltaOverlap * 0.5)
+          : (-anchorTop * 0.5);
+
+      final cardCorner = math.min(
+        borderRadius ?? (cardHeight / 2),
+        cardHeight / 2,
+      );
+
+      width = lerpDouble(size.width, targetWidth, kw)!;
+      height = lerpDouble(cardHeight, targetHeight, kh)!;
+      centerX = lerpDouble(size.width / 2, targetCenterX, kx)!;
+      centerY = lerpDouble(landing + cardHeight / 2 + drag, targetCenterY, ky)!;
+      corner = lerpDouble(cardCorner, targetCorner, kc)!;
+    } else {
+      width = lerpDouble(dropSize / stretch, size.width, expand)!;
+      height = lerpDouble(dropSize * stretch, cardHeight, expand)!;
+      centerY = compact
+          ? cardHeight / 2
+          : lerpDouble(-12, landing + cardHeight / 2, fall)! + drag;
+      centerX = size.width / 2 + anchorOffset * (1.0 - expand);
+      final radius = math.min(width, height) / 2;
+      final cardCorner = math.min(
+        borderRadius ?? (cardHeight / 2),
+        cardHeight / 2,
+      );
+      corner = lerpDouble(radius, cardCorner, expand)!;
+    }
+
     final rect = Rect.fromCenter(
       center: Offset(centerX, centerY),
       width: width,
       height: height,
     );
 
-    final radius = math.min(width, height) / 2;
-    final cardCorner = math.min(
-      borderRadius ?? (cardHeight / 2),
-      cardHeight / 2,
-    );
-    final corner = lerpDouble(radius, cardCorner, expand)!;
     final topFlat = math.max(0.0, width / 2 - corner);
     final botFlat = math.max(0.0, width / 2 - corner);
 
     final tint = compact ? 1.0 : _tint.transform(progress);
     final bodyColor = Color.lerp(Colors.black, surface, tint)!;
     final paint = Paint()..color = bodyColor;
-    final hasCutout = geometry?.hasCutout ?? false;
-    final isPunchHole = hasCutout && geometry?.shape == NotchShape.punchHole;
-    final isPill = hasCutout && geometry?.shape == NotchShape.pill;
-
-    final dpr =
-        (geometry?.devicePixelRatio != null && geometry!.devicePixelRatio > 0)
-        ? geometry!.devicePixelRatio
-        : 1.0;
-    final targetOverlap = math.max(2.2, (2.2 * dpr).round() / dpr);
-
-    final cutoutBottomLocal = hasCutout ? (geometry!.bottom - anchorTop) : 0.0;
-    final cutoutCenterYLocal = hasCutout
-        ? (geometry!.center.dy - anchorTop)
-        : 0.0;
-    final cutoutRadiusX = (hasCutout && geometry!.width > 0)
-        ? geometry!.width / 2
-        : 12.0;
-    final cutoutRadiusY = (hasCutout && geometry!.height > 0)
-        ? geometry!.height / 2
-        : cutoutRadiusX;
-    final cutoutRadius = math.min(cutoutRadiusX, cutoutRadiusY);
-
-    final maxSafeOverlap = hasCutout
-        ? math.min(geometry!.bottom, cutoutRadiusY * 0.45)
-        : 0.0;
-    final deltaOverlap = hasCutout
-        ? math.min(targetOverlap, math.max(0.0, maxSafeOverlap))
-        : 0.0;
-
-    final yApex = cutoutBottomLocal - deltaOverlap;
 
     double? tailLeft;
     double? tailRight;
     double? tailTopY;
-
-    final cutoutHalfWidth = (geometry?.width != null && geometry!.width > 0)
-        ? geometry!.width / 2
-        : 16.0;
-    final maxContactRadius = isPunchHole
-        ? math.min(14.0, math.max(8.0, cutoutRadius * 0.88))
-        : (isPill
-              ? math.min(52.0, math.max(28.0, cutoutHalfWidth * 0.78))
-              : math.min(48.0, math.max(16.0, cutoutHalfWidth * 0.78)));
 
     Path path;
 
@@ -1289,8 +1406,90 @@ class _NotificationPainter extends CustomPainter {
           ..close();
       }
 
-      // If exiting and within suction interval, connect exit bridge
-      if (isExiting && progress <= 0.60 && rect.bottom > 0) {
+      // Interactive reverse-morph liquid suction bridge retracting into camera cutout / notch
+      if (hasCutout && morphProgress >= 0.28 && rect.bottom > yApex) {
+        final u = ((morphProgress - 0.28) / 0.72).clamp(0.0, 1.0);
+        final suction = math.sin(math.pi * u);
+        final yContact = math.max(-anchorTop, yApex);
+        final join = math.max(yContact + 1.0, rect.top + height * 0.25);
+
+        if (join > yContact) {
+          final shoulder = math.min(maxContactRadius, width * 0.48) *
+              lerpDouble(0.35, 1.0, suction)!;
+          final waist = shoulder * lerpDouble(0.62, 0.30, u)!;
+          final attach = math.min(width * 0.46, shoulder + 8.0 * suction);
+          final waistY = yContact + (join - yContact) * 0.45;
+
+          if (shoulder > 1.0 && waist > 0.5) {
+            tailLeft = centerX - math.max(shoulder, attach);
+            tailRight = centerX + math.max(shoulder, attach);
+            tailTopY = yContact;
+
+            final bridge = Path()
+              ..moveTo(centerX - shoulder, yContact)
+              ..lineTo(centerX + shoulder, yContact)
+              ..cubicTo(
+                centerX + shoulder - (shoulder - waist) * 0.18,
+                yContact + (waistY - yContact) * 0.40,
+                centerX + waist + (shoulder - waist) * 0.08,
+                waistY - math.min(4.0, (waistY - yContact) * 0.28),
+                centerX + waist,
+                waistY,
+              )
+              ..cubicTo(
+                centerX + waist,
+                waistY + (join - waistY) * 0.35,
+                centerX + attach * 0.92,
+                join - (join - waistY) * 0.35,
+                centerX + attach,
+                join,
+              )
+              ..lineTo(centerX - attach, join)
+              ..cubicTo(
+                centerX - attach * 0.92,
+                join - (join - waistY) * 0.35,
+                centerX - waist,
+                waistY + (join - waistY) * 0.35,
+                centerX - waist,
+                waistY,
+              )
+              ..cubicTo(
+                centerX - waist - (shoulder - waist) * 0.08,
+                waistY - math.min(4.0, (waistY - yContact) * 0.28),
+                centerX - shoulder + (shoulder - waist) * 0.18,
+                yContact + (waistY - yContact) * 0.40,
+                centerX - shoulder,
+                yContact,
+              )
+              ..close();
+
+            path = Path.combine(PathOperation.union, path, bridge);
+
+            if (bodyColor != Colors.black) {
+              final colorBlend = Curves.easeInOut.transform(
+                ((morphProgress - 0.28) / 0.72).clamp(0.0, 1.0),
+              );
+              paint.shader = LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black,
+                  Color.lerp(Colors.black, bodyColor, (1.0 - colorBlend) * 0.45)!,
+                  bodyColor,
+                ],
+                stops: const [0.0, 0.40, 1.0],
+              ).createShader(
+                Rect.fromLTRB(
+                  0,
+                  yContact,
+                  1,
+                  math.max(rect.bottom, yContact + 1.0),
+                ),
+              );
+            }
+          }
+        }
+      } else if (isExiting && progress <= 0.60 && rect.bottom > 0) {
         final u = (progress / 0.60).clamp(0.0, 1.0);
         final suction = math.sin(math.pi * u);
         final bridgeOpacity = (1.0 - u).clamp(0.0, 1.0);
@@ -1431,7 +1630,7 @@ class _NotificationPainter extends CustomPainter {
         : -math.min(16.0, maxAnchorOverlap);
     final clipTop = math.max(
       screenTop,
-      math.min(baseClipTop, rect.top - 24.0),
+      math.min(baseClipTop + math.min(0.0, drag), rect.top - 24.0),
     );
     final clipBottom = math.max(size.height + 24.0, rect.bottom + 24.0);
 
@@ -1439,12 +1638,15 @@ class _NotificationPainter extends CustomPainter {
     canvas.clipRect(
       Rect.fromLTRB(clipLeft, clipTop, clipRight, clipBottom),
     );
-    final shadowOpacity = expand > 0
+    final shadowFactor =
+        (1.0 - Curves.easeIn.transform(morphProgress)).clamp(0.0, 1.0);
+    final shadowOpacity = (expand > 0
         ? lerpDouble(0.20, 0.26, expand)!
         : (!compact && progress > 0.28
               ? 0.20 * ((progress - 0.28) / 0.08).clamp(0.0, 1.0)
-              : 0.0);
-    final elevation = expand > 0 ? lerpDouble(8.0, 12.0, expand)! : 8.0;
+              : 0.0)) * shadowFactor;
+    final elevation =
+        (expand > 0 ? lerpDouble(8.0, 12.0, expand)! : 8.0) * shadowFactor;
     if (shadowOpacity > 0) {
       canvas.drawShadow(
         path,
@@ -1551,5 +1753,6 @@ class _NotificationPainter extends CustomPainter {
       old.geometry != geometry ||
       old.debugShowGuides != debugShowGuides ||
       old.renderMode != renderMode ||
-      old.isExiting != isExiting;
+      old.isExiting != isExiting ||
+      old.morphProgress != morphProgress;
 }
