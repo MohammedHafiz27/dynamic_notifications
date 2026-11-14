@@ -6,6 +6,7 @@ import 'dart:ui'
 
 import 'package:dynamic_notifications/dynamic_notifications.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -330,6 +331,41 @@ void main() {
       expect(geometry.shape, NotchShape.notch);
       expect(geometry.bottom, 24.0);
       expect(geometry.anchorTop, 23.0);
+    });
+
+    test('calibrates real Android DisplayCutout.boundingRects touching top edge', () {
+      // Real Android hardware reporting (AOSP / Pixel 7a / Galaxy S23):
+      // DisplayCutout.getBoundingRects() reports bounds touching top edge (0.0)
+      // and extending to status bar height (45.0dp / 118px) with horizontal exclusion padding.
+      const realHardware = MediaQueryData(
+        size: Size(411.4, 914.3),
+        viewPadding: EdgeInsets.only(top: 45.0, bottom: 24.0),
+        devicePixelRatio: 2.625,
+        displayFeatures: [
+          DisplayFeature(
+            bounds: Rect.fromLTRB(182.9, 0.0, 238.1, 45.0),
+            type: DisplayFeatureType.cutout,
+            state: DisplayFeatureState.unknown,
+          ),
+        ],
+      );
+
+      final geometry = NotchGeometryDetector.fromMediaQuery(
+        mediaQuery: realHardware,
+        platform: TargetPlatform.android,
+      );
+
+      expect(geometry.hasCutout, isTrue);
+      expect(geometry.source, NotchGeometrySource.displayFeature);
+      expect(geometry.shape, NotchShape.punchHole);
+      expect(geometry.confidence, NotchGeometryConfidence.calibrated);
+      // Punch hole bottom is calibrated inside status bar (below physical camera aperture):
+      // 45.0 - (45.0 * 0.18) = 36.9dp (matches physical camera bottom at 37.7dp)
+      expect(geometry.bottom, closeTo(36.9, 0.5));
+      expect(geometry.anchorTop, closeTo(35.9, 0.5));
+      // Camera width is bounded to physical aperture diameter rather than padded exclusion
+      expect(geometry.width, lessThanOrEqualTo(32.0));
+      expect(geometry.width, greaterThanOrEqualTo(24.0));
     });
 
     test('handles edge-to-edge layout with zero insets but with hardware cutout', () {
@@ -981,6 +1017,136 @@ void main() {
       expect(geometry.hasCutout, isTrue);
       expect(geometry.anchorX, 512.0);
       expect(geometry.bottom, 24.0);
+    });
+
+    test('AndroidCutoutGeometryProvider queries native cutoutPath (API 31+) and constructs NotchGeometry', () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('dynamic_notifications/android_geometry'),
+        (call) async {
+          if (call.method == 'getCutoutGeometry') {
+            return <String, dynamic>{
+              'deviceModel': 'Pixel 7a',
+              'apiLevel': 34,
+              'targetSdk': 34,
+              'hasCutout': true,
+              'hasPath': true,
+              'pathLeft': 507.0,
+              'pathTop': 33.0,
+              'pathRight': 573.0,
+              'pathBottom': 99.0,
+              'pathWidth': 66.0,
+              'pathHeight': 66.0,
+              'boundLeft': 480.0,
+              'boundTop': 0.0,
+              'boundRight': 625.0,
+              'boundBottom': 118.0,
+            };
+          }
+          return null;
+        },
+      );
+
+      final provider = AndroidCutoutGeometryProvider();
+      const mediaQuery = MediaQueryData(
+        size: Size(411.4, 914.3),
+        devicePixelRatio: 2.625,
+        viewPadding: EdgeInsets.only(top: 45.0, bottom: 24.0),
+      );
+
+      final geo = await provider.load(mediaQuery: mediaQuery);
+      expect(geo, isNotNull);
+      expect(geo!.hasCutout, isTrue);
+      expect(geo.source, NotchGeometrySource.nativePath);
+      expect(geo.confidence, NotchGeometryConfidence.exact);
+      expect(geo.shape, NotchShape.punchHole);
+      // Converted from physical coordinates at DPR 2.625:
+      // 507 / 2.625 = 193.14, 33 / 2.625 = 12.57, 99 / 2.625 = 37.71
+      expect(geo.top, closeTo(12.57, 0.01));
+      expect(geo.bottom, closeTo(37.71, 0.01));
+      expect(geo.anchorTop, closeTo(36.71, 0.01));
+      expect(geo.width, closeTo(25.14, 0.01));
+      expect(provider.cached, equals(geo));
+
+      provider.clear();
+      expect(provider.cached, isNull);
+    });
+
+    test('AndroidCutoutGeometryProvider falls back to boundingRects when cutoutPath is unavailable', () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('dynamic_notifications/android_geometry'),
+        (call) async {
+          if (call.method == 'getCutoutGeometry') {
+            return <String, dynamic>{
+              'deviceModel': 'Galaxy S10',
+              'apiLevel': 29,
+              'targetSdk': 29,
+              'hasCutout': true,
+              'hasPath': false,
+              'boundLeft': 750.0,
+              'boundTop': 0.0,
+              'boundRight': 950.0,
+              'boundBottom': 100.0,
+            };
+          }
+          return null;
+        },
+      );
+
+      final provider = AndroidCutoutGeometryProvider();
+      const mediaQuery = MediaQueryData(
+        size: Size(360.0, 740.0),
+        devicePixelRatio: 2.0,
+        viewPadding: EdgeInsets.only(top: 50.0),
+      );
+
+      final geo = await provider.load(mediaQuery: mediaQuery);
+      expect(geo, isNotNull);
+      expect(geo!.hasCutout, isTrue);
+      expect(geo.source, NotchGeometrySource.displayFeature);
+      expect(geo.top, 0.0);
+      expect(geo.bottom, 50.0);
+      expect(geo.anchorTop, 49.0);
+      expect(geo.width, 100.0);
+    });
+
+    testWidgets('DynamicNotifications renders visual guides when debugShowGuides is enabled', (tester) async {
+      final ctrl = DynamicNotificationController();
+      const testGeometry = NotchGeometry(
+        bounds: Rect.fromLTWH(188, 8, 24, 24),
+        center: Offset(200, 20),
+        width: 24,
+        height: 24,
+        top: 8,
+        bottom: 32,
+        screenSize: Size(400, 800),
+        insets: EdgeInsets.only(top: 32),
+        source: NotchGeometrySource.displayFeature,
+        confidence: NotchGeometryConfidence.exact,
+        shape: NotchShape.punchHole,
+        hasCutout: true,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DynamicNotifications(
+            controller: ctrl,
+            geometryOverride: testGeometry,
+            debugShowGuides: true,
+            child: const Scaffold(body: Center(child: Text('Content'))),
+          ),
+        ),
+      );
+
+      ctrl.show(const DynamicNotification(title: 'Debug Guides Test', duration: null));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      final overlay = find.byKey(const ValueKey('dynamic-notification-shape'));
+      expect(overlay, findsOneWidget);
+      // Verify debug guides painted (rect, lines for crosshair & neck guide)
+      expect(tester.takeException(), isNull);
     });
   });
 }

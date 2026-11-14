@@ -91,6 +91,8 @@ class DynamicNotifications extends StatefulWidget {
     required this.child,
     this.originLift = 0,
     this.geometryOverride,
+    this.debugShowGuides = false,
+    this.progressOverride,
   }) : assert(originLift >= 0 && originLift < double.infinity);
 
   final DynamicNotificationController controller;
@@ -103,6 +105,16 @@ class DynamicNotifications extends StatefulWidget {
   /// Optional override for the detected notch geometry.
   /// When null, geometry is automatically detected from the platform environment.
   final NotchGeometry? geometryOverride;
+
+  /// When true, renders on-screen visual guides for the reported cutout bounds,
+  /// calculated anchor origin, and the top boundary of the animated neck.
+  /// Defaults to false.
+  final bool debugShowGuides;
+
+  /// Optional manual override for animation progress (between 0.0 and 1.0).
+  /// Used for frame-by-frame visual inspection and screenshot validation.
+  /// Defaults to null (live animation).
+  final double? progressOverride;
 
   @override
   State<DynamicNotifications> createState() => _DynamicNotificationsState();
@@ -142,6 +154,16 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
     if (oldWidget.controller != widget.controller) {
       _attachController();
       oldWidget.controller._host = null;
+    }
+    if (oldWidget.progressOverride != widget.progressOverride) {
+      if (widget.progressOverride != null) {
+        _current ??= const DynamicNotification(
+          title: 'Geometry Validation',
+          message: 'Visual Seam Inspection',
+          duration: null,
+        );
+        _animation.value = widget.progressOverride!.clamp(0.0, 1.0);
+      }
     }
   }
 
@@ -271,6 +293,7 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
                       anchorX - viewportCenter,
                       anchorTop,
                       geometry,
+                      widget.debugShowGuides,
                     ),
                   ),
                 ),
@@ -287,6 +310,7 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
     double anchorOffset,
     double anchorTop,
     NotchGeometry geometry,
+    bool debugShowGuides,
   ) {
     final theme = Theme.of(context);
     final style = notification.style;
@@ -403,7 +427,7 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
             ),
           ),
           builder: (context, child) {
-            final progress = _animation.value;
+            final progress = widget.progressOverride ?? _animation.value;
             final reveal = compact ? progress : _reveal.transform(progress);
             final interactive = !_exiting && reveal == 1;
             final offset = Offset(
@@ -427,6 +451,7 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
                         borderRadius: style.borderRadius,
                         compact: compact,
                         geometry: geometry,
+                        debugShowGuides: debugShowGuides,
                       ),
                     ),
                   ),
@@ -470,6 +495,7 @@ class _NotificationPainter extends CustomPainter {
     required this.borderRadius,
     required this.compact,
     this.geometry,
+    this.debugShowGuides = false,
   });
 
   final double progress;
@@ -481,6 +507,7 @@ class _NotificationPainter extends CustomPainter {
   final double? borderRadius;
   final bool compact;
   final NotchGeometry? geometry;
+  final bool debugShowGuides;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -573,65 +600,128 @@ class _NotificationPainter extends CustomPainter {
     // Clamp upward overlap to the available screen anchor so painter coordinates
     // never paint above the FlutterView boundary (Y_screen < 0).
     final maxOverlap = math.max(0.0, anchorTop);
-    final yTop = hasCutout ? -math.min(2.0, maxOverlap) : 0.0;
+    final yTop = hasCutout ? -math.min(2.5, maxOverlap) : 0.0;
     final isPunchHole = hasCutout && geometry?.shape == NotchShape.punchHole;
     final domeArch =
-        isPunchHole ? math.min(1.5, math.max(0.0, maxOverlap + yTop)) : 0.0;
+        isPunchHole ? math.min(2.0, math.max(0.0, maxOverlap + yTop)) : 0.0;
     double? tailLeft;
     double? tailRight;
 
     if (!compact && rect.bottom > 0 && neckOpacity > 0) {
-      final neck = width / 2 * neckOpacity;
-      final join = math.max(0.0, centerY + height * 0.11);
-      tailLeft = centerX - neck * 1.25;
-      tailRight = centerX + neck * 1.25;
-      final tail = Path()..moveTo(tailLeft, 0);
-      tail.cubicTo(
-        centerX - neck * 0.47,
-        join * 0.16,
-        centerX - neck * 0.34,
-        join * 0.72,
-        centerX - neck * 0.84,
-        join,
-      );
-      tail.lineTo(centerX + neck * 0.84, join);
-      tail.cubicTo(
-        centerX + neck * 0.34,
-        join * 0.72,
-        centerX + neck * 0.47,
-        join * 0.16,
-        tailRight,
-        0,
-      );
-      if (hasCutout) {
-        tail.lineTo(tailRight, yTop);
-        if (domeArch > 0) {
-          // Arch upward towards the center of the circular punch hole
-          // to hug the circular lens perimeter without exceeding screen top.
-          tail.quadraticBezierTo(centerX, yTop - domeArch, tailLeft, yTop);
+      final join = math.max(0.0, centerY + height * 0.12);
+      final neckSpan = width / 2;
+
+      // Contact half-width at the aperture is bounded by physical cutout dimensions
+      final cutoutHalfWidth = (geometry?.width != null && geometry!.width > 0)
+          ? geometry!.width / 2
+          : 16.0;
+      final maxContactRadius = isPunchHole
+          ? math.min(16.0, math.max(10.0, cutoutHalfWidth))
+          : math.min(20.0, math.max(12.0, cutoutHalfWidth));
+
+      final rTop = math.min(neckSpan * 0.95, maxContactRadius) * neckOpacity;
+      final hNeck = math.max(0.0, join - yTop);
+
+      if (rTop > 0 && hNeck > 0) {
+        tailLeft = centerX - rTop;
+        tailRight = centerX + rTop;
+
+        // Waist position and pinched radius under gravity tension
+        final yWaist = yTop + hNeck * 0.40;
+        final pinchFactor = 0.42 + 0.38 * (1.0 - fall);
+        final rWaist = rTop * pinchFactor;
+
+        // Merge radius at the junction with the drop body
+        final rJoin =
+            math.min(neckSpan * 0.88, rTop + (neckSpan - rTop) * 0.45);
+
+        final tail = Path();
+        // Start at top-left contact point
+        tail.moveTo(centerX - rTop, yTop);
+
+        // Top arc (dome arch into the circular punch hole) or flat line across notch
+        if (hasCutout && domeArch > 0) {
+          tail.cubicTo(
+            centerX - rTop * 0.5,
+            yTop - domeArch * 0.85,
+            centerX + rTop * 0.5,
+            yTop - domeArch * 0.85,
+            centerX + rTop,
+            yTop,
+          );
         } else {
-          tail.lineTo(tailLeft, yTop);
+          tail.lineTo(centerX + rTop, yTop);
         }
-        tail.lineTo(tailLeft, 0);
+
+        // Right flank: vertical tangent at top contact prevents sharp horizontal ears
+        tail.cubicTo(
+          centerX + rTop,
+          yTop + (yWaist - yTop) * 0.45,
+          centerX + rWaist,
+          yWaist - (yWaist - yTop) * 0.35,
+          centerX + rWaist,
+          yWaist,
+        );
+        tail.cubicTo(
+          centerX + rWaist,
+          yWaist + (join - yWaist) * 0.35,
+          centerX + rJoin * 0.90,
+          join - (join - yWaist) * 0.35,
+          centerX + rJoin,
+          join,
+        );
+
+        // Bottom connection inside the drop body
+        tail.lineTo(centerX - rJoin, join);
+
+        // Left flank: from body join up to waist, then to top-left contact
+        tail.cubicTo(
+          centerX - rJoin * 0.90,
+          join - (join - yWaist) * 0.35,
+          centerX - rWaist,
+          yWaist + (join - yWaist) * 0.35,
+          centerX - rWaist,
+          yWaist,
+        );
+        tail.cubicTo(
+          centerX - rWaist,
+          yWaist - (yWaist - yTop) * 0.35,
+          centerX - rTop,
+          yTop + (yWaist - yTop) * 0.45,
+          centerX - rTop,
+          yTop,
+        );
+
+        tail.close();
+        path = Path.combine(PathOperation.union, path, tail);
+
+        // Keep the attachment dark while the body lightens away from the edge.
+        paint.shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color.lerp(bodyColor, Colors.black, neckOpacity)!,
+            bodyColor,
+          ],
+        ).createShader(
+          Rect.fromLTRB(0, yTop - domeArch, 1, math.max(join, 1)),
+        );
       }
-      tail.close();
-      path = Path.combine(PathOperation.union, path, tail);
-      // Keep the attachment dark while the body lightens away from the edge.
-      paint.shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [Color.lerp(bodyColor, Colors.black, neckOpacity)!, bodyColor],
-      ).createShader(Rect.fromLTRB(0, yTop - domeArch, 1, math.max(join, 1)));
     }
+
+    final tailPad = (tailLeft != null && tailRight != null)
+        ? math.max(28.0, (tailRight - tailLeft) / 2 + 16.0)
+        : 28.0;
     final clipLeft = tailLeft != null
-        ? math.min(-24.0, math.min(rect.left, tailLeft))
+        ? math.min(-24.0, math.min(rect.left, centerX - tailPad))
         : math.min(-24.0, rect.left);
     final clipRight = tailRight != null
-        ? math.max(size.width + 24.0, math.max(rect.right, tailRight))
+        ? math.max(size.width + 24.0, math.max(rect.right, centerX + tailPad))
         : math.max(size.width + 24.0, rect.right);
     final clipTop = hasCutout
         ? math.min(yTop - domeArch, -math.min(16.0, maxOverlap))
         : -math.min(16.0, maxOverlap);
+
     canvas.save();
     canvas.clipRect(
       Rect.fromLTRB(
@@ -651,6 +741,90 @@ class _NotificationPainter extends CustomPainter {
     }
     canvas.drawPath(path, paint);
     canvas.restore();
+
+    if (debugShowGuides) {
+      _paintDebugGuides(
+        canvas: canvas,
+        size: size,
+        centerX: centerX,
+        yTop: yTop,
+        domeArch: domeArch,
+        tailLeft: tailLeft,
+        tailRight: tailRight,
+      );
+    }
+  }
+
+  void _paintDebugGuides({
+    required Canvas canvas,
+    required Size size,
+    required double centerX,
+    required double yTop,
+    required double domeArch,
+    required double? tailLeft,
+    required double? tailRight,
+  }) {
+    // 1. Cutout bounding box in local painter coordinates
+    if (geometry?.bounds != null) {
+      final b = geometry!.bounds!;
+      final cutoutCenterLocalX = size.width / 2 + anchorOffset;
+      final cutoutCenterLocalY = b.center.dy - anchorTop;
+      final localBounds = Rect.fromCenter(
+        center: Offset(cutoutCenterLocalX, cutoutCenterLocalY),
+        width: b.width,
+        height: b.height,
+      );
+      final boundsPaint = Paint()
+        ..color = const Color(0xFF00E5FF)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0;
+      canvas.drawRect(localBounds, boundsPaint);
+    }
+
+    // 2. Origin crosshair (anchor origin at local Y = 0)
+    final originPaint = Paint()
+      ..color = const Color(0xFFFF1744)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
+    canvas.drawLine(
+      Offset(centerX - 12, 0),
+      Offset(centerX + 12, 0),
+      originPaint,
+    );
+    canvas.drawLine(
+      Offset(centerX, -12),
+      Offset(centerX, 12),
+      originPaint,
+    );
+
+    // 3. Top of animated neck and attachment contact points
+    if (tailLeft != null && tailRight != null) {
+      final neckGuidePaint = Paint()
+        ..color = const Color(0xFFFFEA00)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0;
+      canvas.drawLine(
+        Offset(tailLeft, yTop),
+        Offset(tailRight, yTop),
+        neckGuidePaint,
+      );
+      canvas.drawCircle(
+        Offset(tailLeft, yTop),
+        3.0,
+        neckGuidePaint..style = PaintingStyle.fill,
+      );
+      canvas.drawCircle(
+        Offset(tailRight, yTop),
+        3.0,
+        neckGuidePaint..style = PaintingStyle.fill,
+      );
+      if (domeArch > 0) {
+        final domePaint = Paint()
+          ..color = const Color(0xFF76FF03)
+          ..style = PaintingStyle.fill;
+        canvas.drawCircle(Offset(centerX, yTop - domeArch), 3.5, domePaint);
+      }
+    }
   }
 
   @override
@@ -663,5 +837,6 @@ class _NotificationPainter extends CustomPainter {
       old.surface != surface ||
       old.borderRadius != borderRadius ||
       old.compact != compact ||
-      old.geometry != geometry;
+      old.geometry != geometry ||
+      old.debugShowGuides != debugShowGuides;
 }

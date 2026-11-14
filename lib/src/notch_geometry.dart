@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' show DisplayFeatureType;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// The origin source of a [NotchGeometry] measurement.
 enum NotchGeometrySource {
@@ -15,6 +16,9 @@ enum NotchGeometrySource {
 
   /// Inferred from system safe area or status bar insets.
   safeArea,
+
+  /// Provided by optional native platform cutout path (e.g. Android API 31+ getCutoutPath).
+  nativePath,
 
   /// No cutout is present on this device or display.
   none,
@@ -186,6 +190,9 @@ class NotchGeometryDetector {
 
   /// Detects notch geometry from the provided [BuildContext].
   static NotchGeometry detect(BuildContext context) {
+    if (AndroidCutoutGeometryProvider.instance.cached != null) {
+      return AndroidCutoutGeometryProvider.instance.cached!;
+    }
     return fromMediaQuery(
       mediaQuery: MediaQuery.of(context),
       platform: Theme.of(context).platform,
@@ -258,6 +265,79 @@ class NotchGeometryDetector {
             (resolved.width + second.width) / 2;
         if (gapX <= 16.0 && (resolved.top - second.top).abs() <= 12.0) {
           resolved = resolved.expandToInclude(second);
+        }
+      }
+
+      // On Android, DisplayCutout.getBoundingRects() snaps cutouts to the upper display edge
+      // (top = 0.0) and extends the bottom boundary to the status bar insets (insets.top).
+      // We must detect whether this is a status-bar-extended bounding box for an enclosed camera
+      // (punch hole or pill), or a true physical notch cut into the bezel.
+      if (platform == TargetPlatform.android && resolved.top <= 2.0) {
+        final statusBarHeight = math.max(padding.top, resolved.bottom);
+        final touchesStatusBarBottom =
+            (resolved.bottom - padding.top).abs() <= 3.0 ||
+                resolved.bottom >= padding.top - 2.0;
+
+        if (touchesStatusBarBottom) {
+          if (resolved.width <= 72.0) {
+            // Standard single circular punch hole camera inside the status bar.
+            // In Android status bar layouts, the camera aperture is vertically centered
+            // with the status bar icons (Y_center ≈ 0.52 * H) with radius ~12..16dp.
+            final radius = math.min(
+              resolved.width / 2,
+              math.min(16.0, statusBarHeight * 0.32),
+            );
+            final centerY = statusBarHeight * 0.52;
+            final physicalBottom = math.min(
+              resolved.bottom,
+              statusBarHeight -
+                  math.max(4.0, math.min(8.5, statusBarHeight * 0.18)),
+            );
+            final physicalWidth =
+                math.min(resolved.width, math.max(24.0, radius * 2));
+            final physicalBounds = Rect.fromCenter(
+              center: Offset(resolved.center.dx, centerY),
+              width: physicalWidth,
+              height: radius * 2,
+            );
+            return NotchGeometry(
+              bounds: physicalBounds,
+              center: physicalBounds.center,
+              width: physicalWidth,
+              height: radius * 2,
+              top: math.max(0.0, physicalBounds.top),
+              bottom: physicalBottom,
+              screenSize: size,
+              insets: padding,
+              source: NotchGeometrySource.displayFeature,
+              confidence: NotchGeometryConfidence.calibrated,
+              shape: NotchShape.punchHole,
+              hasCutout: true,
+              devicePixelRatio: dpr,
+            );
+          } else if (resolved.width <= 120.0) {
+            // Pill / dual camera punch hole inside the status bar
+            final physicalBottom = math.min(
+              resolved.bottom,
+              statusBarHeight -
+                  math.max(3.0, math.min(7.0, statusBarHeight * 0.15)),
+            );
+            return NotchGeometry(
+              bounds: resolved,
+              center: resolved.center,
+              width: resolved.width,
+              height: resolved.height,
+              top: resolved.top,
+              bottom: physicalBottom,
+              screenSize: size,
+              insets: padding,
+              source: NotchGeometrySource.displayFeature,
+              confidence: NotchGeometryConfidence.calibrated,
+              shape: NotchShape.pill,
+              hasCutout: true,
+              devicePixelRatio: dpr,
+            );
+          }
         }
       }
 
@@ -376,4 +456,121 @@ class NotchGeometryDetector {
     }
     return NotchShape.punchHole;
   }
+}
+
+/// Optional cached geometry provider that queries native Android [DisplayCutout] APIs
+/// (including Android 12+ / API 31+ [DisplayCutout.getCutoutPath]) via a platform channel.
+class AndroidCutoutGeometryProvider {
+  AndroidCutoutGeometryProvider({
+    this.channel = const MethodChannel('dynamic_notifications/android_geometry'),
+  });
+
+  /// The shared singleton instance.
+  static final AndroidCutoutGeometryProvider instance =
+      AndroidCutoutGeometryProvider();
+
+  /// The platform channel used to communicate with the host Android activity.
+  final MethodChannel channel;
+
+  NotchGeometry? _cached;
+  bool _fetching = false;
+
+  /// Returns the cached [NotchGeometry] if available, otherwise null.
+  NotchGeometry? get cached => _cached;
+
+  /// Asynchronously queries native Android cutout geometry, caches the result,
+  /// and returns a resolved [NotchGeometry].
+  Future<NotchGeometry?> load({
+    required MediaQueryData mediaQuery,
+  }) async {
+    if (_cached != null) return _cached;
+    if (_fetching) return null;
+    _fetching = true;
+    try {
+      final res =
+          await channel.invokeMapMethod<String, dynamic>('getCutoutGeometry');
+      if (res == null) return null;
+      final hasCutout = res['hasCutout'] as bool? ?? false;
+      final insets = mediaQuery.viewPadding != EdgeInsets.zero
+          ? mediaQuery.viewPadding
+          : mediaQuery.padding;
+
+      if (!hasCutout) {
+        _cached = NotchGeometry(
+          bounds: null,
+          center: Offset(mediaQuery.size.width / 2, mediaQuery.padding.top / 2),
+          width: 0.0,
+          height: 0.0,
+          top: 0.0,
+          bottom: mediaQuery.padding.top,
+          screenSize: mediaQuery.size,
+          insets: insets,
+          source: mediaQuery.padding.top > 0
+              ? NotchGeometrySource.safeArea
+              : NotchGeometrySource.none,
+          confidence: mediaQuery.padding.top > 0
+              ? NotchGeometryConfidence.fallback
+              : NotchGeometryConfidence.none,
+          shape: NotchShape.none,
+          hasCutout: false,
+          devicePixelRatio: mediaQuery.devicePixelRatio,
+        );
+        return _cached;
+      }
+
+      final dpr =
+          mediaQuery.devicePixelRatio > 0 ? mediaQuery.devicePixelRatio : 1.0;
+      final hasPath = res['hasPath'] as bool? ?? false;
+      final Rect bounds;
+      final NotchGeometrySource source;
+
+      if (hasPath && res.containsKey('pathLeft')) {
+        // Physical coordinates from DisplayCutout.getCutoutPath() (API 31+)
+        final pLeft = (res['pathLeft'] as num).toDouble();
+        final pTop = (res['pathTop'] as num).toDouble();
+        final pRight = (res['pathRight'] as num).toDouble();
+        final pBottom = (res['pathBottom'] as num).toDouble();
+        bounds =
+            Rect.fromLTRB(pLeft / dpr, pTop / dpr, pRight / dpr, pBottom / dpr);
+        source = NotchGeometrySource.nativePath;
+      } else if (res.containsKey('boundLeft')) {
+        // Physical coordinates from DisplayCutout.getBoundingRects() (API 28+)
+        final bLeft = (res['boundLeft'] as num).toDouble();
+        final bTop = (res['boundTop'] as num).toDouble();
+        final bRight = (res['boundRight'] as num).toDouble();
+        final bBottom = (res['boundBottom'] as num).toDouble();
+        bounds =
+            Rect.fromLTRB(bLeft / dpr, bTop / dpr, bRight / dpr, bBottom / dpr);
+        source = NotchGeometrySource.displayFeature;
+      } else {
+        return null;
+      }
+
+      final shape = NotchGeometryDetector._classifyShape(bounds);
+
+      _cached = NotchGeometry(
+        bounds: bounds,
+        center: bounds.center,
+        width: bounds.width,
+        height: bounds.height,
+        top: bounds.top,
+        bottom: bounds.bottom,
+        screenSize: mediaQuery.size,
+        insets: insets,
+        source: source,
+        confidence: NotchGeometryConfidence.exact,
+        shape: shape,
+        hasCutout: true,
+        devicePixelRatio: dpr,
+      );
+      return _cached;
+    } catch (_) {
+      return null;
+    } finally {
+      _fetching = false;
+    }
+  }
+
+  /// Clears any cached geometry.
+  void clear() => _cached = null;
 }
