@@ -1,8 +1,12 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui' show DisplayFeatureType, lerpDouble;
+import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
+
+import 'src/notch_geometry.dart';
+
+export 'src/notch_geometry.dart';
 
 /// Content and behavior for one in-app notification.
 class DynamicNotification {
@@ -86,6 +90,7 @@ class DynamicNotifications extends StatefulWidget {
     required this.controller,
     required this.child,
     this.originLift = 0,
+    this.geometryOverride,
   }) : assert(originLift >= 0 && originLift < double.infinity);
 
   final DynamicNotificationController controller;
@@ -94,6 +99,10 @@ class DynamicNotifications extends StatefulWidget {
   /// Moves the automatic drop origin up by this many logical pixels.
   /// The card still lands in the safe area. Defaults to zero.
   final double originLift;
+
+  /// Optional override for the detected notch geometry.
+  /// When null, geometry is automatically detected from the platform environment.
+  final NotchGeometry? geometryOverride;
 
   @override
   State<DynamicNotifications> createState() => _DynamicNotificationsState();
@@ -213,49 +222,28 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
   @override
   Widget build(BuildContext context) {
     final notification = _current;
-    final padding = MediaQuery.viewPaddingOf(context);
+    final viewPadding = MediaQuery.viewPaddingOf(context);
+    final padding = viewPadding != EdgeInsets.zero
+        ? viewPadding
+        : MediaQuery.paddingOf(context);
     final safeTop = padding.top + 4;
     var anchorTop = safeTop;
     final viewportCenter =
         (padding.left + MediaQuery.sizeOf(context).width - padding.right) / 2;
     var anchorX = viewportCenter;
+    final geometry =
+        widget.geometryOverride ?? NotchGeometryDetector.detect(context);
+
     if (notification != null && !_reduceMotion) {
-      var nearestDistance = double.infinity;
-      for (final feature in MediaQuery.displayFeaturesOf(context)) {
-        final bounds = feature.bounds;
-        if (feature.type != DisplayFeatureType.cutout ||
-            bounds.isEmpty ||
-            !bounds.isFinite ||
-            bounds.right <= padding.left ||
-            bounds.left >= MediaQuery.sizeOf(context).width - padding.right ||
-            bounds.top >= safeTop ||
-            bounds.bottom > safeTop) {
-          continue;
-        }
-        final distance = (bounds.center.dx - viewportCenter).abs();
-        if (distance >= nearestDistance) continue;
-        nearestDistance = distance;
-        anchorX = bounds.center.dx;
-        anchorTop = math.max(0, bounds.bottom - 1);
-      }
-      if (nearestDistance.isInfinite &&
-          Theme.of(context).platform == TargetPlatform.iOS &&
-          MediaQuery.orientationOf(context) == Orientation.portrait &&
-          padding.top >= 44) {
-        // shortcut: iOS exposes safe insets, not cutout bounds. Overlap measured
-        // simulator edges; originLift handles unmeasured devices and display zoom.
-        final double edge;
-        if (padding.top >= 58) {
-          edge = padding.top >= 62 ? 50 : 48;
-        } else if (padding.top >= 50) {
-          edge = 36;
-        } else if (padding.top >= 47) {
-          // 12 and 13/14/16e share dimensions but have 32/34pt notches.
-          edge = 31;
-        } else {
-          edge = 29;
-        }
-        anchorTop = math.min(padding.top - 2, edge);
+      if (geometry.hasCutout) {
+        anchorX = geometry.center.dx;
+        anchorTop = geometry.anchorTop;
+      } else if (widget.geometryOverride != null) {
+        anchorX = geometry.center.dx;
+        anchorTop = geometry.anchorTop;
+      } else {
+        anchorTop = safeTop;
+        anchorX = viewportCenter;
       }
       anchorTop = math.max(0, anchorTop - widget.originLift);
     }
@@ -279,8 +267,10 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
                     constraints: const BoxConstraints(maxWidth: 396),
                     child: _buildNotification(
                       notification,
-                      safeTop - anchorTop,
+                      math.max(0.0, safeTop - anchorTop),
                       anchorX - viewportCenter,
+                      anchorTop,
+                      geometry,
                     ),
                   ),
                 ),
@@ -295,6 +285,8 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
     DynamicNotification notification,
     double safeOffset,
     double anchorOffset,
+    double anchorTop,
+    NotchGeometry geometry,
   ) {
     final theme = Theme.of(context);
     final style = notification.style;
@@ -311,9 +303,11 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = _reduceMotion;
-        final landing =
-            safeOffset +
-            (compact || constraints.maxHeight - safeOffset < 180 ? 0.0 : 22.0);
+        final landing = math.max(
+          0.0,
+          safeOffset +
+              (compact || constraints.maxHeight - safeOffset < 180 ? 0.0 : 22.0),
+        );
         return AnimatedBuilder(
           animation: _animation,
           child: Semantics(
@@ -428,9 +422,11 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
                         drag: offset.dy,
                         landing: landing,
                         anchorOffset: anchorOffset,
+                        anchorTop: anchorTop,
                         surface: surface,
                         borderRadius: style.borderRadius,
                         compact: compact,
+                        geometry: geometry,
                       ),
                     ),
                   ),
@@ -469,18 +465,22 @@ class _NotificationPainter extends CustomPainter {
     required this.drag,
     required this.landing,
     required this.anchorOffset,
+    required this.anchorTop,
     required this.surface,
     required this.borderRadius,
     required this.compact,
+    this.geometry,
   });
 
   final double progress;
   final double drag;
   final double landing;
   final double anchorOffset;
+  final double anchorTop;
   final Color surface;
   final double? borderRadius;
   final bool compact;
+  final NotchGeometry? geometry;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -567,43 +567,77 @@ class _NotificationPainter extends CustomPainter {
     final neckOpacity =
         1 -
         const Interval(0.18, 0.28, curve: Curves.easeInOut).transform(progress);
+    final hasCutout = geometry?.hasCutout ?? false;
+    // Overlap slightly into the hardware cutout/safe area to eliminate
+    // subpixel anti-aliasing seams and active display gap artifacts.
+    // Clamp upward overlap to the available screen anchor so painter coordinates
+    // never paint above the FlutterView boundary (Y_screen < 0).
+    final maxOverlap = math.max(0.0, anchorTop);
+    final yTop = hasCutout ? -math.min(2.0, maxOverlap) : 0.0;
+    final isPunchHole = hasCutout && geometry?.shape == NotchShape.punchHole;
+    final domeArch =
+        isPunchHole ? math.min(1.5, math.max(0.0, maxOverlap + yTop)) : 0.0;
+    double? tailLeft;
+    double? tailRight;
+
     if (!compact && rect.bottom > 0 && neckOpacity > 0) {
       final neck = width / 2 * neckOpacity;
       final join = math.max(0.0, centerY + height * 0.11);
-      final tail = Path()
-        ..moveTo(centerX - neck * 1.25, 0)
-        ..cubicTo(
-          centerX - neck * 0.47,
-          join * 0.16,
-          centerX - neck * 0.34,
-          join * 0.72,
-          centerX - neck * 0.84,
-          join,
-        )
-        ..lineTo(centerX + neck * 0.84, join)
-        ..cubicTo(
-          centerX + neck * 0.34,
-          join * 0.72,
-          centerX + neck * 0.47,
-          join * 0.16,
-          centerX + neck * 1.25,
-          0,
-        )
-        ..close();
+      tailLeft = centerX - neck * 1.25;
+      tailRight = centerX + neck * 1.25;
+      final tail = Path()..moveTo(tailLeft, 0);
+      tail.cubicTo(
+        centerX - neck * 0.47,
+        join * 0.16,
+        centerX - neck * 0.34,
+        join * 0.72,
+        centerX - neck * 0.84,
+        join,
+      );
+      tail.lineTo(centerX + neck * 0.84, join);
+      tail.cubicTo(
+        centerX + neck * 0.34,
+        join * 0.72,
+        centerX + neck * 0.47,
+        join * 0.16,
+        tailRight,
+        0,
+      );
+      if (hasCutout) {
+        tail.lineTo(tailRight, yTop);
+        if (domeArch > 0) {
+          // Arch upward towards the center of the circular punch hole
+          // to hug the circular lens perimeter without exceeding screen top.
+          tail.quadraticBezierTo(centerX, yTop - domeArch, tailLeft, yTop);
+        } else {
+          tail.lineTo(tailLeft, yTop);
+        }
+        tail.lineTo(tailLeft, 0);
+      }
+      tail.close();
       path = Path.combine(PathOperation.union, path, tail);
       // Keep the attachment dark while the body lightens away from the edge.
       paint.shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [Color.lerp(bodyColor, Colors.black, neckOpacity)!, bodyColor],
-      ).createShader(Rect.fromLTRB(0, 0, 1, math.max(join, 1)));
+      ).createShader(Rect.fromLTRB(0, yTop - domeArch, 1, math.max(join, 1)));
     }
+    final clipLeft = tailLeft != null
+        ? math.min(-24.0, math.min(rect.left, tailLeft))
+        : math.min(-24.0, rect.left);
+    final clipRight = tailRight != null
+        ? math.max(size.width + 24.0, math.max(rect.right, tailRight))
+        : math.max(size.width + 24.0, rect.right);
+    final clipTop = hasCutout
+        ? math.min(yTop - domeArch, -math.min(16.0, maxOverlap))
+        : -math.min(16.0, maxOverlap);
     canvas.save();
     canvas.clipRect(
       Rect.fromLTRB(
-        math.min(-24, rect.left),
-        0,
-        math.max(size.width + 24, rect.right),
+        clipLeft,
+        clipTop,
+        clipRight,
         size.height + 24,
       ),
     );
@@ -625,7 +659,9 @@ class _NotificationPainter extends CustomPainter {
       old.drag != drag ||
       old.landing != landing ||
       old.anchorOffset != anchorOffset ||
+      old.anchorTop != anchorTop ||
       old.surface != surface ||
       old.borderRadius != borderRadius ||
-      old.compact != compact;
+      old.compact != compact ||
+      old.geometry != geometry;
 }
