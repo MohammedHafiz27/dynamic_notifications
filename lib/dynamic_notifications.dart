@@ -637,17 +637,49 @@ class _NotificationPainter extends CustomPainter {
         1 -
         const Interval(0.18, 0.28, curve: Curves.easeInOut).transform(progress);
     final hasCutout = geometry?.hasCutout ?? false;
+    final isPunchHole = hasCutout && geometry?.shape == NotchShape.punchHole;
+    final isPill = hasCutout && geometry?.shape == NotchShape.pill;
+
     // Overlap slightly into the hardware cutout/safe area to eliminate
     // subpixel anti-aliasing seams and active display gap artifacts.
     // Clamp upward overlap to the available screen anchor so painter coordinates
     // never paint above the FlutterView boundary (Y_screen < 0).
-    final maxOverlap = math.max(0.0, anchorTop);
-    final yTop = hasCutout ? -math.min(2.5, maxOverlap) : 0.0;
-    final isPunchHole = hasCutout && geometry?.shape == NotchShape.punchHole;
-    final domeArch =
-        isPunchHole ? math.min(2.0, math.max(0.0, maxOverlap + yTop)) : 0.0;
+    final dpr = (geometry?.devicePixelRatio != null && geometry!.devicePixelRatio > 0)
+        ? geometry!.devicePixelRatio
+        : 1.0;
+    // Overlap depth: at least 2.2dp to eliminate subpixel anti-aliasing gaps and
+    // ensure continuous attachment with the physical aperture contour.
+    final targetOverlap = math.max(2.2, (2.2 * dpr).round() / dpr);
+
+    // Cutout vertical metrics in local painter coordinates (local y = 0 at anchorTop)
+    final cutoutBottomLocal = hasCutout
+        ? (geometry!.bottom - anchorTop)
+        : 0.0;
+    final cutoutCenterYLocal = hasCutout
+        ? (geometry!.center.dy - anchorTop)
+        : 0.0;
+    final cutoutRadiusX = (hasCutout && geometry!.width > 0)
+        ? geometry!.width / 2
+        : 12.0;
+    final cutoutRadiusY = (hasCutout && geometry!.height > 0)
+        ? geometry!.height / 2
+        : cutoutRadiusX;
+    final cutoutRadius = math.min(cutoutRadiusX, cutoutRadiusY);
+
+    // Safe overlap limit: stays on screen (Y_screen >= 0) and preserves camera lens
+    final maxSafeOverlap = hasCutout
+        ? math.min(geometry!.bottom, cutoutRadiusY * 0.45)
+        : 0.0;
+    final deltaOverlap = hasCutout
+        ? math.min(targetOverlap, math.max(0.0, maxSafeOverlap))
+        : 0.0;
+
+    // Apex: lowest boundary point of the cutout offset upward by deltaOverlap
+    final yApex = cutoutBottomLocal - deltaOverlap;
+
     double? tailLeft;
     double? tailRight;
+    double? tailTopY;
 
     if (renderMode == NotificationRenderMode.standard) {
       if (!compact && rect.bottom > 0 && neckOpacity > 0) {
@@ -659,18 +691,52 @@ class _NotificationPainter extends CustomPainter {
             ? geometry!.width / 2
             : 16.0;
         final maxContactRadius = isPunchHole
-            ? math.min(16.0, math.max(10.0, cutoutHalfWidth))
+            ? math.min(14.0, math.max(8.0, cutoutRadius * 0.88))
             : math.min(20.0, math.max(12.0, cutoutHalfWidth));
 
         final rTop = math.min(neckSpan * 0.95, maxContactRadius) * neckOpacity;
-        final hNeck = math.max(0.0, join - yTop);
+
+        // Calculate aperture contact Y and tangent angles following the lower contour
+        double yContact = yApex;
+        double contourRise = 0.0;
+        double contactCos = 0.0;
+        double contactSin = 1.0;
+        if (hasCutout && rTop > 0) {
+          if (isPunchHole) {
+            final rClamped = math.min(rTop, cutoutRadius * 0.92);
+            final cosAlpha = math.sqrt(math.max(0.0, cutoutRadius * cutoutRadius - rClamped * rClamped)) / cutoutRadius;
+            final sinAlpha = rClamped / cutoutRadius;
+            final yRim = cutoutCenterYLocal + cutoutRadius * cosAlpha;
+            yContact = yRim - deltaOverlap;
+            contourRise = math.max(0.0, yApex - yContact);
+            contactCos = cosAlpha;
+            contactSin = sinAlpha;
+          } else if (isPill) {
+            final flatHalf = math.max(0.0, (geometry!.width - geometry!.height) / 2);
+            if (rTop > flatHalf) {
+              final dx = math.min(cutoutRadius * 0.92, rTop - flatHalf);
+              final cosAlpha = math.sqrt(math.max(0.0, cutoutRadius * cutoutRadius - dx * dx)) / cutoutRadius;
+              final sinAlpha = dx / cutoutRadius;
+              final yRim = cutoutCenterYLocal + cutoutRadius * cosAlpha;
+              yContact = yRim - deltaOverlap;
+              contourRise = math.max(0.0, yApex - yContact);
+              contactCos = cosAlpha;
+              contactSin = sinAlpha;
+            }
+          }
+        }
+
+        // Clamp yContact to not exceed negative screen boundary
+        yContact = math.max(-anchorTop, yContact);
+        final hNeck = math.max(0.0, join - yContact);
 
         if (rTop > 0 && hNeck > 0) {
           tailLeft = centerX - rTop;
           tailRight = centerX + rTop;
+          tailTopY = yContact;
 
           // Waist position and pinched radius under gravity tension
-          final yWaist = yTop + hNeck * 0.40;
+          final yWaist = yApex + math.max(1.5, (join - yApex) * 0.40);
           final pinchFactor = 0.42 + 0.38 * (1.0 - fall);
           final rWaist = rTop * pinchFactor;
 
@@ -680,28 +746,53 @@ class _NotificationPainter extends CustomPainter {
 
           final tail = Path();
           // Start at top-left contact point
-          tail.moveTo(centerX - rTop, yTop);
+          tail.moveTo(centerX - rTop, yContact);
 
-          // Top arc (dome arch into the circular punch hole) or flat line across notch
-          if (hasCutout && domeArch > 0) {
+          // Top transition: smooth continuous Bézier following lower contour of camera aperture
+          if (contourRise > 0.001) {
+            final cpY = yApex + contourRise / 3.0;
+            final cx = contactCos > 0.05
+                ? math.min(rTop * 0.65, math.max(rTop * 0.35, (4.0 / 3.0) * contourRise * (cutoutRadius * contactCos) / math.max(1.0, rTop)))
+                : rTop * 0.5;
             tail.cubicTo(
-              centerX - rTop * 0.5,
-              yTop - domeArch * 0.85,
-              centerX + rTop * 0.5,
-              yTop - domeArch * 0.85,
+              centerX - rTop + cx,
+              cpY,
+              centerX + rTop - cx,
+              cpY,
               centerX + rTop,
-              yTop,
+              yContact,
             );
           } else {
-            tail.lineTo(centerX + rTop, yTop);
+            tail.lineTo(centerX + rTop, yContact);
           }
 
-          // Right flank: vertical tangent at top contact prevents sharp horizontal ears
+          final h = math.max(1.0, yWaist - yContact);
+          final w = math.max(0.1, rTop - rWaist);
+          final double cp1x;
+          final double cp1y;
+          final double cp2x;
+          final double cp2y;
+
+          if (contactCos > 0.05) {
+            final maxL1 = math.min(w / contactCos * 0.45, h / contactSin * 0.35);
+            final l1 = math.max(1.0, maxL1);
+            cp1x = centerX + rTop - l1 * contactCos;
+            cp1y = yContact + l1 * contactSin;
+            cp2x = centerX + rWaist + w * 0.06;
+            cp2y = yWaist - math.min(4.0, h * 0.28);
+          } else {
+            cp1x = centerX + rTop - w * 0.15;
+            cp1y = yContact + h * 0.38;
+            cp2x = centerX + rWaist + w * 0.08;
+            cp2y = yWaist - math.min(4.0, h * 0.30);
+          }
+
+          // Right flank: smooth tangent transition from aperture contact down to waist
           tail.cubicTo(
-            centerX + rTop,
-            yTop + (yWaist - yTop) * 0.45,
-            centerX + rWaist,
-            yWaist - (yWaist - yTop) * 0.35,
+            cp1x,
+            cp1y,
+            cp2x,
+            cp2y,
             centerX + rWaist,
             yWaist,
           );
@@ -717,7 +808,7 @@ class _NotificationPainter extends CustomPainter {
           // Bottom connection inside the drop body
           tail.lineTo(centerX - rJoin, join);
 
-          // Left flank: from body join up to waist, then to top-left contact
+          // Left flank: from body join up to waist, then to top-left contact with mirror symmetry
           tail.cubicTo(
             centerX - rJoin * 0.90,
             join - (join - yWaist) * 0.35,
@@ -727,12 +818,12 @@ class _NotificationPainter extends CustomPainter {
             yWaist,
           );
           tail.cubicTo(
-            centerX - rWaist,
-            yWaist - (yWaist - yTop) * 0.35,
+            2 * centerX - cp2x,
+            cp2y,
+            2 * centerX - cp1x,
+            cp1y,
             centerX - rTop,
-            yTop + (yWaist - yTop) * 0.45,
-            centerX - rTop,
-            yTop,
+            yContact,
           );
 
           tail.close();
@@ -743,11 +834,11 @@ class _NotificationPainter extends CustomPainter {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color.lerp(bodyColor, Colors.black, neckOpacity)!,
+              Color.lerp(bodyColor, Colors.black, math.max(0.65, neckOpacity))!,
               bodyColor,
             ],
           ).createShader(
-            Rect.fromLTRB(0, yTop - domeArch, 1, math.max(join, 1)),
+            Rect.fromLTRB(0, yContact, 1, math.max(join, 1)),
           );
         }
       }
@@ -757,7 +848,7 @@ class _NotificationPainter extends CustomPainter {
           ? geometry!.width / 2
           : 16.0;
       final maxContactRadius = isPunchHole
-          ? math.min(16.0, math.max(10.0, cutoutHalfWidth))
+          ? math.min(14.0, math.max(8.0, cutoutRadius * 0.88))
           : math.min(22.0, math.max(12.0, cutoutHalfWidth));
 
       final bool showBridge;
@@ -795,33 +886,91 @@ class _NotificationPainter extends CustomPainter {
           attach = 0.0;
         }
 
-        if (showBridge && shoulder > 0 && waist > 0 && join > yTop) {
+        // Calculate aperture contact Y and tangent angles following the lower contour
+        double yContact = yApex;
+        double contourRise = 0.0;
+        double contactCos = 0.0;
+        double contactSin = 1.0;
+        if (hasCutout && shoulder > 0) {
+          if (isPunchHole) {
+            final rClamped = math.min(shoulder, cutoutRadius * 0.92);
+            final cosAlpha = math.sqrt(math.max(0.0, cutoutRadius * cutoutRadius - rClamped * rClamped)) / cutoutRadius;
+            final sinAlpha = rClamped / cutoutRadius;
+            final yRim = cutoutCenterYLocal + cutoutRadius * cosAlpha;
+            yContact = yRim - deltaOverlap;
+            contourRise = math.max(0.0, yApex - yContact);
+            contactCos = cosAlpha;
+            contactSin = sinAlpha;
+          } else if (isPill) {
+            final flatHalf = math.max(0.0, (geometry!.width - geometry!.height) / 2);
+            if (shoulder > flatHalf) {
+              final dx = math.min(cutoutRadius * 0.92, shoulder - flatHalf);
+              final cosAlpha = math.sqrt(math.max(0.0, cutoutRadius * cutoutRadius - dx * dx)) / cutoutRadius;
+              final sinAlpha = dx / cutoutRadius;
+              final yRim = cutoutCenterYLocal + cutoutRadius * cosAlpha;
+              yContact = yRim - deltaOverlap;
+              contourRise = math.max(0.0, yApex - yContact);
+              contactCos = cosAlpha;
+              contactSin = sinAlpha;
+            }
+          }
+        }
+
+        yContact = math.max(-anchorTop, yContact);
+
+        if (showBridge && shoulder > 0 && waist > 0 && join > yContact) {
           tailLeft = centerX - math.max(shoulder, attach);
           tailRight = centerX + math.max(shoulder, attach);
-          final waistY = lerpDouble(yTop, rect.top, 0.58)!;
+          tailTopY = yContact;
+          final waistY = math.max(yApex + 2.0, lerpDouble(yApex, rect.top, 0.58)!);
 
           final bridge = Path();
-          bridge.moveTo(centerX - shoulder, yTop);
+          bridge.moveTo(centerX - shoulder, yContact);
 
-          if (hasCutout && domeArch > 0) {
+          if (contourRise > 0.001) {
+            final cpY = yApex + contourRise / 3.0;
+            final cx = contactCos > 0.05
+                ? math.min(shoulder * 0.65, math.max(shoulder * 0.35, (4.0 / 3.0) * contourRise * (cutoutRadius * contactCos) / math.max(1.0, shoulder)))
+                : shoulder * 0.5;
             bridge.cubicTo(
-              centerX - shoulder * 0.5,
-              yTop - domeArch * 0.85,
-              centerX + shoulder * 0.5,
-              yTop - domeArch * 0.85,
+              centerX - shoulder + cx,
+              cpY,
+              centerX + shoulder - cx,
+              cpY,
               centerX + shoulder,
-              yTop,
+              yContact,
             );
           } else {
-            bridge.lineTo(centerX + shoulder, yTop);
+            bridge.lineTo(centerX + shoulder, yContact);
           }
 
-          // Concave cubic shoulder down to waist
+          final h = math.max(1.0, waistY - yContact);
+          final w = math.max(0.1, shoulder - waist);
+          final double cp1x;
+          final double cp1y;
+          final double cp2x;
+          final double cp2y;
+
+          if (contactCos > 0.05) {
+            final maxL1 = math.min(w / contactCos * 0.45, h / contactSin * 0.35);
+            final l1 = math.max(1.0, maxL1);
+            cp1x = centerX + shoulder - l1 * contactCos;
+            cp1y = yContact + l1 * contactSin;
+            cp2x = centerX + waist + w * 0.06;
+            cp2y = waistY - math.min(4.0, h * 0.28);
+          } else {
+            cp1x = centerX + shoulder - w * 0.15;
+            cp1y = yContact + h * 0.38;
+            cp2x = centerX + waist + w * 0.10;
+            cp2y = waistY - math.min(4.0, h * 0.30);
+          }
+
+          // Concave cubic shoulder down to waist with tangent continuity
           bridge.cubicTo(
-            centerX + shoulder * 0.43,
-            yTop,
-            centerX + waist,
-            waistY - 4,
+            cp1x,
+            cp1y,
+            cp2x,
+            cp2y,
             centerX + waist,
             waistY,
           );
@@ -844,12 +993,12 @@ class _NotificationPainter extends CustomPainter {
             waistY,
           );
           bridge.cubicTo(
-            centerX - waist,
-            waistY - 4,
-            centerX - shoulder * 0.43,
-            yTop,
+            2 * centerX - cp2x,
+            cp2y,
+            2 * centerX - cp1x,
+            cp1y,
             centerX - shoulder,
-            yTop,
+            yContact,
           );
           bridge.close();
 
@@ -859,11 +1008,11 @@ class _NotificationPainter extends CustomPainter {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color.lerp(bodyColor, Colors.black, bridgeOpacity)!,
+              Color.lerp(bodyColor, Colors.black, math.max(0.65, bridgeOpacity))!,
               bodyColor,
             ],
           ).createShader(
-            Rect.fromLTRB(0, yTop - domeArch, 1, math.max(join, 1)),
+            Rect.fromLTRB(0, yContact, 1, math.max(join, 1)),
           );
         }
       }
@@ -878,9 +1027,11 @@ class _NotificationPainter extends CustomPainter {
     final clipRight = tailRight != null
         ? math.max(size.width + 24.0, math.max(rect.right, centerX + tailPad))
         : math.max(size.width + 24.0, rect.right);
+    final minPathY = tailTopY ?? 0.0;
+    final maxAnchorOverlap = math.max(0.0, anchorTop);
     final clipTop = hasCutout
-        ? math.min(yTop - domeArch, -math.min(16.0, maxOverlap))
-        : -math.min(16.0, maxOverlap);
+        ? math.min(minPathY, -math.min(16.0, maxAnchorOverlap))
+        : -math.min(16.0, maxAnchorOverlap);
 
     canvas.save();
     canvas.clipRect(
@@ -907,8 +1058,8 @@ class _NotificationPainter extends CustomPainter {
         canvas: canvas,
         size: size,
         centerX: centerX,
-        yTop: yTop,
-        domeArch: domeArch,
+        yContact: tailTopY ?? yApex,
+        yApex: yApex,
         tailLeft: tailLeft,
         tailRight: tailRight,
       );
@@ -919,8 +1070,8 @@ class _NotificationPainter extends CustomPainter {
     required Canvas canvas,
     required Size size,
     required double centerX,
-    required double yTop,
-    required double domeArch,
+    required double yContact,
+    required double yApex,
     required double? tailLeft,
     required double? tailRight,
   }) {
@@ -964,26 +1115,24 @@ class _NotificationPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2.0;
       canvas.drawLine(
-        Offset(tailLeft, yTop),
-        Offset(tailRight, yTop),
+        Offset(tailLeft, yContact),
+        Offset(tailRight, yContact),
         neckGuidePaint,
       );
       canvas.drawCircle(
-        Offset(tailLeft, yTop),
+        Offset(tailLeft, yContact),
         3.0,
         neckGuidePaint..style = PaintingStyle.fill,
       );
       canvas.drawCircle(
-        Offset(tailRight, yTop),
+        Offset(tailRight, yContact),
         3.0,
         neckGuidePaint..style = PaintingStyle.fill,
       );
-      if (domeArch > 0) {
-        final domePaint = Paint()
-          ..color = const Color(0xFF76FF03)
-          ..style = PaintingStyle.fill;
-        canvas.drawCircle(Offset(centerX, yTop - domeArch), 3.5, domePaint);
-      }
+      final apexPaint = Paint()
+        ..color = const Color(0xFF76FF03)
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(Offset(centerX, yApex), 3.5, apexPaint);
     }
   }
 

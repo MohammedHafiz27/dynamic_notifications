@@ -1423,5 +1423,244 @@ void main() {
       expect(customPaint.painter, isNotNull);
       expect(tester.takeException(), isNull);
     });
+
+    for (final mode in [
+      NotificationRenderMode.standard,
+      NotificationRenderMode.experimentalLiquid,
+    ]) {
+      testWidgets('attachment geometry conforms to circular punch hole without horizontal ledge ($mode)', (
+        tester,
+      ) async {
+        const testGeometry = NotchGeometry(
+          bounds: Rect.fromLTWH(388, 8, 24, 24),
+          center: Offset(400, 20),
+          width: 24,
+          height: 24,
+          top: 8,
+          bottom: 32,
+          screenSize: Size(800, 600),
+          insets: EdgeInsets.only(top: 40),
+          source: NotchGeometrySource.displayFeature,
+          confidence: NotchGeometryConfidence.exact,
+          shape: NotchShape.punchHole,
+          hasCutout: true,
+          devicePixelRatio: 2.0,
+        );
+
+        final ctrl = DynamicNotificationController();
+        await tester.pumpWidget(
+          MaterialApp(
+            home: DynamicNotifications(
+              controller: ctrl,
+              geometryOverride: testGeometry,
+              progressOverride: 0.15,
+              renderMode: mode,
+              child: const Scaffold(body: Center(child: Text('Punch Hole Test'))),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        final overlay = find.byKey(const ValueKey('dynamic-notification-shape'));
+        final center = tester.getSize(overlay).width / 2;
+
+        expect(
+          overlay,
+          paints
+            ..path(
+              includes: [
+                Offset(center, 0.5), // Within overlap
+                Offset(center, -1.0), // Inside apex overlap
+              ],
+              excludes: [
+                Offset(center, -11.0), // Camera lens center is preserved
+                Offset(center + 14.0, -1.0), // No horizontal ledge outside aperture
+                Offset(center - 14.0, -1.0), // No horizontal ledge outside aperture
+                Offset(center + 24.0, 1.0), // Far lateral exclude
+              ],
+            ),
+        );
+      });
+    }
+
+    testWidgets('attachment geometry conforms to pill cutout without ledge', (
+      tester,
+    ) async {
+      // iPhone Dynamic Island pill cutout: width 126, height 37, center (400, 30)
+      const pillGeometry = NotchGeometry(
+        bounds: Rect.fromLTWH(337, 11, 126, 37),
+        center: Offset(400, 29.5),
+        width: 126,
+        height: 37,
+        top: 11,
+        bottom: 48,
+        screenSize: Size(800, 600),
+        insets: EdgeInsets.only(top: 59),
+        source: NotchGeometrySource.profile,
+        confidence: NotchGeometryConfidence.calibrated,
+        shape: NotchShape.pill,
+        hasCutout: true,
+        devicePixelRatio: 3.0,
+      );
+
+      final ctrl = DynamicNotificationController();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DynamicNotifications(
+            controller: ctrl,
+            geometryOverride: pillGeometry,
+            progressOverride: 0.15,
+            renderMode: NotificationRenderMode.standard,
+            child: const Scaffold(body: Center(child: Text('Pill Test'))),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final overlay = find.byKey(const ValueKey('dynamic-notification-shape'));
+      final center = tester.getSize(overlay).width / 2;
+
+      expect(
+        overlay,
+        paints
+          ..path(
+            includes: [
+              Offset(center, -1.0), // Overlaps into pill bottom rim
+            ],
+            excludes: [
+              Offset(center, -18.0), // Center of pill is preserved
+              Offset(center + 70.0, -1.0), // Outside pill bounds
+            ],
+          ),
+      );
+    });
+
+    testWidgets('originLift preserves overlap depth and adheres to aperture boundary', (
+      tester,
+    ) async {
+      const testGeometry = NotchGeometry(
+        bounds: Rect.fromLTWH(388, 8, 24, 24),
+        center: Offset(400, 20),
+        width: 24,
+        height: 24,
+        top: 8,
+        bottom: 32,
+        screenSize: Size(800, 600),
+        insets: EdgeInsets.only(top: 40),
+        source: NotchGeometrySource.displayFeature,
+        confidence: NotchGeometryConfidence.exact,
+        shape: NotchShape.punchHole,
+        hasCutout: true,
+        devicePixelRatio: 2.0,
+      );
+
+      final ctrl = DynamicNotificationController();
+      // originLift = 8.0 lifts anchorTop from 31 to 23
+      // cutoutBottomLocal = 32 - 23 = 9.0; yApex = 9.0 - 2.2 = 6.8; lens center is at -3.0
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DynamicNotifications(
+            controller: ctrl,
+            geometryOverride: testGeometry,
+            originLift: 8.0,
+            progressOverride: 0.15,
+            renderMode: NotificationRenderMode.standard,
+            child: const Scaffold(body: Center(child: Text('Lift Test'))),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final overlay = find.byKey(const ValueKey('dynamic-notification-shape'));
+      final center = tester.getSize(overlay).width / 2;
+
+      expect(
+        overlay,
+        paints
+          ..path(
+            includes: [
+              Offset(center, 7.5), // Within overlap
+              Offset(center, 7.0), // Inside apex overlap
+            ],
+            excludes: [
+              Offset(center, -3.0), // Camera lens center (Y = -3.0) is preserved
+              Offset(center + 14.0, 7.0), // No horizontal ledge outside aperture
+            ],
+          ),
+      );
+    });
+
+    for (final mode in [
+      NotificationRenderMode.standard,
+      NotificationRenderMode.experimentalLiquid,
+    ]) {
+      testWidgets('attachment geometry maintains tangent continuity without bulging at intermediate progress (0.20, 0.30) ($mode)', (
+        tester,
+      ) async {
+        const testGeometry = NotchGeometry(
+          bounds: Rect.fromLTWH(388, 8, 24, 24),
+          center: Offset(400, 20),
+          width: 24,
+          height: 24,
+          top: 8,
+          bottom: 32,
+          screenSize: Size(800, 600),
+          insets: EdgeInsets.only(top: 40),
+          source: NotchGeometrySource.displayFeature,
+          confidence: NotchGeometryConfidence.exact,
+          shape: NotchShape.punchHole,
+          hasCutout: true,
+          devicePixelRatio: 2.0,
+        );
+
+        for (final p in [0.20, 0.30]) {
+          final ctrl = DynamicNotificationController();
+          await tester.pumpWidget(
+            MaterialApp(
+              home: DynamicNotifications(
+                controller: ctrl,
+                geometryOverride: testGeometry,
+                progressOverride: p,
+                renderMode: mode,
+                child: const Scaffold(body: Center(child: Text('Bulge Test'))),
+              ),
+            ),
+          );
+          await tester.pump();
+
+          final overlay = find.byKey(const ValueKey('dynamic-notification-shape'));
+          final center = tester.getSize(overlay).width / 2;
+
+          // In standard mode at p=0.30, neck has smoothly pinched off so it shouldn't contain top points
+          if (mode == NotificationRenderMode.standard && p == 0.30) {
+            expect(
+              overlay,
+              paints
+                ..path(
+                  excludes: [
+                    Offset(center, -1.0),
+                    Offset(center, -11.0),
+                  ],
+                ),
+            );
+          } else {
+            expect(
+              overlay,
+              paints
+                ..path(
+                  includes: [
+                    Offset(center, -1.0), // Overlap maintained
+                  ],
+                  excludes: [
+                    Offset(center, -11.0), // Lens center clear
+                    Offset(center + 14.0, -1.0), // No lateral shelf outside aperture
+                    Offset(center - 14.0, -1.0), // No lateral shelf outside aperture
+                  ],
+                ),
+            );
+          }
+        }
+      });
+    }
   });
 }

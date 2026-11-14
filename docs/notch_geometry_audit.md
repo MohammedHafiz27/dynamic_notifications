@@ -223,3 +223,34 @@ While the Android 16 API 36 emulator confirms pipeline and mathematical correctn
 1. **Samsung OneUI (OneUI 6+ / Android 14+):** Verify that Samsung's custom edge-to-edge status bar padding does not introduce subpixel gaps on Infinity-O displays.
 2. **Xiaomi HyperOS:** Inspect punch hole alignment when MIUI status bar optimization is toggled.
 3. **iPhone 15/16 Pro Physical Hardware:** Validate Dynamic Island lower edge contact under dynamic Display Zoom settings.
+
+---
+
+## 10. Camera-to-Liquid-Bridge Attachment & Contour Tangency Remediation (Audit v5.2)
+
+### 10.1 Mathematical Diagnosis of Separation & Horizontal Ledge
+1. **Curvature Inversion & Discontinuous Attachment:**
+   The lower boundary of a circular camera aperture is an upward-curving circle:
+   $$Y_{\text{rim}}(r) = y_c + \sqrt{R^2 - r^2}$$
+   where the lowest point of the camera circle ($y_{\text{bottom}} = y_c + R$) sits at the vertical centerline $x = x_c$, and curves upward ($Y$ decreases) toward the equator as $r = |x - x_c|$ increases.
+   Previous implementations constructed an inverted downward-opening dome arch ($\cap$-shaped) and anchored contact points at an uncalibrated negative offset, creating a geometric discrepancy between the circular glass contour and the liquid neck.
+2. **Flank Slope Discontinuity (Horizontal Ledge):**
+   At contact point $(x_c + r, y_{\text{rim}})$, the circle's boundary tangent vector is $(-\cos\alpha, \sin\alpha)$ where $\cos\alpha = \frac{\sqrt{R^2 - r^2}}{R}$ and $\sin\alpha = \frac{r}{R}$, with slope:
+   $$\left. \frac{dx}{dy} \right|_{\text{circle}} = -\cot\alpha = -\frac{\sqrt{R^2 - r^2}}{r}$$
+   Previous arbitrary scalar control point fractions produced an initial flank slope of $\frac{dx}{dy} \approx -0.07 \text{ to } -0.26$ (up to $16\times$ flatter than the aperture rim slope $\approx -1.06 \text{ to } -1.78$). This slope mismatch produced a $\approx 32^\circ$ angular kink, causing the bridge flank to bulge laterally outside the camera silhouette between $y_{\text{contact}}$ and $y_{\text{bottom}}$ and creating a visible horizontal step/shelf flanking the camera.
+
+### 10.2 Implemented Geometry Fixes
+1. **Contour-Following Apex Curve:**
+   For circular punch holes and pill cutouts, the top boundary of the liquid bridge now follows the upward circular arc of the camera cutout:
+   $$\text{contourRise} = y_{\text{apex}} - y_{\text{contact}} = R - \sqrt{R^2 - r^2}$$
+   parameterized via a matching cubic Bézier curve with curvature control point:
+   $$c_x = \frac{4}{3} \cdot \text{contourRise} \cdot \frac{\sqrt{R^2 - r^2}}{r}$$
+2. **Exact $G^1$ Tangent Continuity on Flanks:**
+   Control points $CP_1$ are parameterized along the exact tangent unit vector $(-\cos\alpha, \sin\alpha)$:
+   $$CP_1 = (c_x \pm r \mp l_1 \cos\alpha, \; y_{\text{contact}} + l_1 \sin\alpha)$$
+   where $l_1 = \min\left(\frac{w}{\cos\alpha} \cdot 0.45, \; \frac{h}{\sin\alpha} \cdot 0.35\right)$.
+   This guarantees $\left. \frac{dx}{dy} \right|_{t=0} = -\cot\alpha$, eliminating the lateral bulge, ledge, and angular kink.
+3. **Calibrated Subpixel Overlap:**
+   $\Delta_{\text{overlap}} \approx 2.2\text{dp}$ is applied into the lower aperture boundary to prevent subpixel anti-aliasing seams, bounded by $R \times 0.45$ so that the central optical camera lens is completely preserved and never obscured.
+4. **Validation Across Keyframes:**
+   Frame captures at 0%, 5%, 10%, 15%, 20%, and 30% confirm seamless emergence from the camera aperture with zero horizontal ledge or vertical gap in both `standard` and `experimentalLiquid` renderers.

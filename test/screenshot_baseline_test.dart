@@ -12,7 +12,7 @@ void main() {
   testWidgets('Capture reproducible baseline screenshots for verified renderer', (
     tester,
   ) async {
-    final progressSteps = [0.0, 0.15, 0.30, 0.50, 0.75, 1.0];
+    final progressSteps = [0.0, 0.05, 0.10, 0.15, 0.20, 0.30, 0.50, 0.75, 1.0];
 
     // Android Pixel 7a hardware profile: 412 x 915 logical dp, DPR = 2.625
     const testSize = Size(412, 915);
