@@ -240,6 +240,7 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
   bool _pointerDown = false;
   int? _activePointerId;
   bool _isDragging = false;
+  double _dragStartX = 0;
   double _dragStartY = 0;
   double _dragBaseY = 0;
   VelocityTracker? _velocityTracker;
@@ -387,6 +388,7 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
     _pointerMoved = false;
     _isDragging = false;
     _velocityTracker = null;
+    _dragStartX = 0.0;
     _dragStartY = 0.0;
     _dragBaseY = 0.0;
     _drag = 0.0;
@@ -492,6 +494,7 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
     _activePointerId = null;
     _pointerDown = false;
     _velocityTracker = null;
+    _dragStartX = 0.0;
     _dragStartY = 0.0;
     _dragBaseY = 0.0;
     _springController.stop();
@@ -580,6 +583,7 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
     _pointerDownTime = clock.now();
     _pointerDownPosition = event.position;
     _pointerMoved = false;
+    _dragStartX = event.position.dx;
     _dragStartY = event.position.dy;
     _dragBaseY = _drag;
     _isDragging = false;
@@ -597,21 +601,45 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
         (event.position - _pointerDownPosition!).distance > 18.0) {
       _pointerMoved = true;
     }
+    final geometry =
+        widget.geometryOverride ?? NotchGeometryDetector.detect(context);
+    final isSide = geometry.hasCutout &&
+        (geometry.edge == CutoutEdge.left || geometry.edge == CutoutEdge.right);
+
+    final deltaX = event.position.dx - _dragStartX;
     final deltaY = event.position.dy - _dragStartY;
-    if (!_isDragging && (_dragBaseY != 0 || deltaY.abs() > 4.0)) {
+    if (!_isDragging &&
+        (_dragBaseY != 0 ||
+            deltaY.abs() > 4.0 ||
+            (isSide && deltaX.abs() > 4.0))) {
       _isDragging = true;
     }
     if (_isDragging) {
-      final newDrag = (_dragBaseY + deltaY).clamp(
+      final double effectiveDelta;
+      if (isSide) {
+        if (deltaY > 8.0 && deltaY.abs() > deltaX.abs()) {
+          // Downward drag pull-to-open
+          effectiveDelta = deltaY;
+        } else if (geometry.edge == CutoutEdge.left) {
+          // Leftward drag into left cutout (only deltaX <= 0 reverses into cutout)
+          effectiveDelta = deltaX <= 0 ? deltaX : 0.0;
+        } else {
+          // Rightward drag into right cutout (only deltaX >= 0 reverses into cutout)
+          effectiveDelta = deltaX >= 0 ? -deltaX : 0.0;
+        }
+      } else {
+        effectiveDelta = deltaY;
+      }
+
+      final newDrag = (_dragBaseY + effectiveDelta).clamp(
         widget.gestureConfig.maxUpwardDrag,
         widget.gestureConfig.maxDownwardDrag,
       );
       _drag = newDrag;
       if (_drag <= 0) {
         final maxUp = widget.gestureConfig.maxUpwardDrag.abs();
-        final dragProgress = maxUp > 0
-            ? (1.0 + _drag / maxUp).clamp(0.0, 1.0)
-            : 1.0;
+        final dragProgress =
+            maxUp > 0 ? (1.0 + _drag / maxUp).clamp(0.0, 1.0) : 1.0;
         _animation.value = dragProgress;
       } else {
         _animation.value = 1.0;
@@ -628,23 +656,40 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
     _pointerDown = false;
     if (_exiting) return;
     _velocityTracker?.addPosition(event.timeStamp, event.position);
-    final velocity =
-        _velocityTracker?.getVelocityEstimate()?.pixelsPerSecond.dy ?? 0.0;
+    final velocityEstimate =
+        _velocityTracker?.getVelocityEstimate()?.pixelsPerSecond ?? Offset.zero;
     _velocityTracker = null;
+
+    final geometry =
+        widget.geometryOverride ?? NotchGeometryDetector.detect(context);
+    final isSide = geometry.hasCutout &&
+        (geometry.edge == CutoutEdge.left || geometry.edge == CutoutEdge.right);
+
+    final double dismissVelocity;
+    if (isSide) {
+      if (geometry.edge == CutoutEdge.left) {
+        dismissVelocity = velocityEstimate.dx;
+      } else {
+        dismissVelocity = -velocityEstimate.dx;
+      }
+    } else {
+      dismissVelocity = velocityEstimate.dy;
+    }
+    final openVelocity = velocityEstimate.dy;
 
     if (_isDragging || _drag != 0) {
       final config = widget.gestureConfig;
 
-      // Upward dismissal: crossed threshold upward, or flung upward while displaced upward
+      // Cutout dismissal: crossed threshold toward cutout, or flung toward cutout
       if (_drag <= config.dismissThreshold ||
-          (_drag <= 0 && velocity <= config.dismissVelocityThreshold)) {
+          (_drag <= 0 && dismissVelocity <= config.dismissVelocityThreshold)) {
         _exit();
         return;
       }
 
-      // Downward open: crossed threshold downward, or flung downward while displaced downward
+      // Downward open: crossed threshold downward, or flung downward
       if (_drag >= config.openThreshold ||
-          (_drag >= 0 && velocity >= config.openVelocityThreshold)) {
+          (_drag >= 0 && openVelocity >= config.openVelocityThreshold)) {
         _open();
         return;
       }
@@ -737,37 +782,69 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
       }
       anchorTop = math.max(0, anchorTop - widget.originLift);
     }
+    final isSideCutout = geometry.hasCutout &&
+        (geometry.edge == CutoutEdge.left || geometry.edge == CutoutEdge.right);
+
     return Stack(
       fit: StackFit.expand,
       clipBehavior: Clip.none,
       children: [
         widget.child,
         if (notification != null)
-          Positioned(
-            top: anchorTop,
-            left: padding.left,
-            right: padding.right,
-            bottom: padding.bottom,
-            child: RepaintBoundary(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Align(
-                  alignment: Alignment.topCenter,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 396),
-                    child: _buildNotification(
-                      notification,
-                      math.max(0.0, safeTop - anchorTop),
-                      anchorX - viewportCenter,
-                      anchorTop,
-                      geometry,
-                      widget.debugShowGuides,
+          isSideCutout
+              ? Positioned(
+                  top: safeTop,
+                  left: 0,
+                  right: 0,
+                  bottom: padding.bottom,
+                  child: RepaintBoundary(
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        left: padding.left + 16,
+                        right: padding.right + 16,
+                      ),
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 396),
+                          child: _buildNotification(
+                            notification,
+                            0.0,
+                            0.0,
+                            safeTop,
+                            geometry,
+                            widget.debugShowGuides,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                )
+              : Positioned(
+                  top: anchorTop,
+                  left: padding.left,
+                  right: padding.right,
+                  bottom: padding.bottom,
+                  child: RepaintBoundary(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 396),
+                          child: _buildNotification(
+                            notification,
+                            math.max(0.0, safeTop - anchorTop),
+                            anchorX - viewportCenter,
+                            anchorTop,
+                            geometry,
+                            widget.debugShowGuides,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ),
-          ),
       ],
     );
   }
@@ -898,7 +975,18 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
             } else {
               effectiveDrag = _drag;
             }
-            final offset = Offset(0, effectiveDrag);
+            final isSide = geometry.hasCutout &&
+                (geometry.edge == CutoutEdge.left ||
+                    geometry.edge == CutoutEdge.right);
+            final Offset offset;
+            if (isSide && effectiveDrag <= 0) {
+              final dragX = geometry.edge == CutoutEdge.left
+                  ? effectiveDrag
+                  : -effectiveDrag;
+              offset = Offset(dragX, 0);
+            } else {
+              offset = Offset(0, effectiveDrag);
+            }
             final morphProgress = _morphProgress;
             final contentOpacity = reveal;
             final contentScale = lerpDouble(0.94, 1.0, reveal)!;
@@ -912,7 +1000,7 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
                       key: const ValueKey('dynamic-notification-shape'),
                       painter: _NotificationPainter(
                         progress: progress,
-                        drag: offset.dy,
+                        drag: isSide ? effectiveDrag : offset.dy,
                         landing: landing,
                         anchorOffset: anchorOffset,
                         anchorTop: anchorTop,
@@ -991,6 +1079,14 @@ class _NotificationPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final cardHeight = size.height - landing;
     if (progress == 0 || size.width == 0 || cardHeight <= 0) return;
+
+    if (geometry != null &&
+        geometry!.hasCutout &&
+        (geometry!.edge == CutoutEdge.left ||
+            geometry!.edge == CutoutEdge.right)) {
+      _paintSideCutout(canvas, size, geometry!.edge);
+      return;
+    }
 
     final hasCutout = geometry?.hasCutout ?? false;
     final isPunchHole = hasCutout && geometry?.shape == NotchShape.punchHole;
@@ -1157,11 +1253,24 @@ class _NotificationPainter extends CustomPainter {
       yContact = math.max(-anchorTop, yContact);
 
       // Droplet vertical extent
+      final double detachmentExtent;
+      final double minTip;
+      if (drag == 0.0) {
+        detachmentExtent = math.max(rect.bottom - yApex, 78.0);
+        minTip = 22.0;
+      } else {
+        final baseDetachment = math.max(
+          rect.bottom - drag - yApex,
+          78.0,
+        );
+        detachmentExtent = math.max(0.0, baseDetachment + drag);
+        minTip = 0.0;
+      }
       final yBottom =
           yApex +
           lerpDouble(
-            22.0,
-            math.max(rect.bottom - yApex, 78.0),
+            minTip,
+            detachmentExtent,
             Curves.easeInOutQuad.transform(u),
           )!;
 
@@ -1559,6 +1668,351 @@ class _NotificationPainter extends CustomPainter {
         ..color = const Color(0xFF76FF03)
         ..style = PaintingStyle.fill;
       canvas.drawCircle(Offset(centerX, yApex), 3.5, apexPaint);
+    }
+  }
+
+  void _paintSideCutout(Canvas canvas, Size size, CutoutEdge edge) {
+    final cardHeight = size.height - landing;
+    if (progress == 0 || size.width == 0 || cardHeight <= 0) return;
+
+    final isLeft = (edge == CutoutEdge.left);
+    final cardWidth = size.width;
+
+    // Settled card geometry in painter coordinates:
+    final settledCenterX = cardWidth / 2;
+    final settledCenterY = landing + cardHeight / 2;
+    final cardCorner = math.min(
+      borderRadius ?? (cardHeight / 2),
+      cardHeight / 2,
+    );
+
+    // Cutout coordinates:
+    final geo = geometry!;
+    final cutoutAnchor = geo.anchorPoint;
+    final screenSize = geo.screenSize;
+
+    // Available horizontal bounds between padding insets
+    final availableWidth = math.max(
+      cardWidth,
+      screenSize.width - geo.insets.left - geo.insets.right,
+    );
+    final boxLeft = geo.insets.left +
+        16.0 +
+        math.max(0.0, availableWidth - 32.0 - cardWidth) / 2;
+
+    // Cutout anchor in local painter coordinates:
+    final cutoutAnchorX = cutoutAnchor.dx - boxLeft;
+    final cutoutAnchorY = cutoutAnchor.dy - anchorTop;
+
+    // Effective drag translation
+    final dragX = isLeft ? drag : -drag;
+    final effectiveDragX = drag <= 0 ? dragX : 0.0;
+    final effectiveDragY = drag > 0 ? drag : 0.0;
+
+    final expand = compact ? 1.0 : _expand.transform(progress);
+    final grow = const Interval(
+      0.0,
+      0.24,
+      curve: Curves.easeOutCubic,
+    ).transform(progress);
+
+    final tint = compact ? 1.0 : _tint.transform(progress);
+    final bodyColor = Color.lerp(Colors.black, surface, tint)!;
+    final paint = Paint()..color = bodyColor;
+
+    Path path;
+
+    final isAttached = !compact && progress <= 0.28;
+    if (isAttached) {
+      final u = (progress / 0.28).clamp(0.0, 1.0);
+      final maxContactRadius = math.min(
+        18.0,
+        math.max(8.0, (geo.height > 0 ? geo.height / 2 : 12.0) * 0.88),
+      );
+      final shoulder = maxContactRadius *
+          lerpDouble(0.96, 0.65, Curves.easeInOut.transform(u))!;
+
+      final xContact = cutoutAnchorX;
+      final yContact = cutoutAnchorY;
+
+      // Emergence displacement into screen (positive distance from cutout)
+      final maxReach = (settledCenterX - xContact).abs().clamp(60.0, 140.0);
+      final double effectiveReach;
+      final double minTip;
+      if (drag == 0.0) {
+        effectiveReach = maxReach;
+        minTip = 22.0;
+      } else {
+        effectiveReach = math.max(
+          0.0,
+          maxReach + (isLeft ? effectiveDragX : -effectiveDragX) / 0.68,
+        );
+        minTip = 0.0;
+      }
+      final reach = lerpDouble(
+        minTip,
+        effectiveReach,
+        Curves.easeInOutQuad.transform(u),
+      )!;
+
+      final pinch = math.pow(u, 2.0);
+      final waist = shoulder * (0.45 - 0.28 * pinch);
+      final rBulb = lerpDouble(
+        10.0,
+        24.5,
+        Curves.easeInOutCubic.transform(u),
+      )!;
+
+      if (isLeft) {
+        final waistX = xContact + reach * lerpDouble(0.48, 0.36, u)!;
+        final bulbX = xContact + reach * lerpDouble(0.76, 0.68, u)!;
+        final xTip = bulbX + rBulb;
+
+        path = Path()
+          ..moveTo(xContact, yContact - shoulder)
+          // 1. Top flank to waist
+          ..cubicTo(
+            xContact + (waistX - xContact) * 0.38,
+            yContact - shoulder + (shoulder - waist) * 0.22,
+            waistX - 6.0,
+            yContact - waist,
+            waistX,
+            yContact - waist,
+          )
+          // 2. Top waist to bulb
+          ..cubicTo(
+            waistX + (bulbX - waistX) * 0.40,
+            yContact - waist,
+            bulbX - (bulbX - waistX) * 0.35,
+            yContact - rBulb,
+            bulbX,
+            yContact - rBulb,
+          )
+          // 3. Bulb round leading tip around (xTip, yContact)
+          ..cubicTo(
+            bulbX + (xTip - bulbX) * 0.5523,
+            yContact - rBulb,
+            xTip,
+            yContact - rBulb * 0.5523,
+            xTip,
+            yContact,
+          )
+          ..cubicTo(
+            xTip,
+            yContact + rBulb * 0.5523,
+            bulbX + (xTip - bulbX) * 0.5523,
+            yContact + rBulb,
+            bulbX,
+            yContact + rBulb,
+          )
+          // 4. Bottom bulb to waist
+          ..cubicTo(
+            bulbX - (bulbX - waistX) * 0.35,
+            yContact + rBulb,
+            waistX + (bulbX - waistX) * 0.40,
+            yContact + waist,
+            waistX,
+            yContact + waist,
+          )
+          // 5. Bottom waist to shoulder
+          ..cubicTo(
+            waistX - 6.0,
+            yContact + waist,
+            xContact + (waistX - xContact) * 0.38,
+            yContact + shoulder - (shoulder - waist) * 0.22,
+            xContact,
+            yContact + shoulder,
+          )
+          ..close();
+
+        if (surface != Colors.black) {
+          paint.shader = LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [
+              Colors.black,
+              Color.lerp(Colors.black, surface, 0.35)!,
+              Color.lerp(Colors.black, surface, 0.85)!,
+              surface,
+            ],
+            stops: const [0.0, 0.30, 0.70, 1.0],
+          ).createShader(
+            Rect.fromLTRB(xContact, yContact - shoulder, xTip, yContact + shoulder),
+          );
+        }
+      } else {
+        // Right side cutout
+        final waistX = xContact - reach * lerpDouble(0.48, 0.36, u)!;
+        final bulbX = xContact - reach * lerpDouble(0.76, 0.68, u)!;
+        final xTip = bulbX - rBulb;
+
+        path = Path()
+          ..moveTo(xContact, yContact - shoulder)
+          // 1. Top flank to waist
+          ..cubicTo(
+            xContact - (xContact - waistX) * 0.38,
+            yContact - shoulder + (shoulder - waist) * 0.22,
+            waistX + 6.0,
+            yContact - waist,
+            waistX,
+            yContact - waist,
+          )
+          // 2. Top waist to bulb
+          ..cubicTo(
+            waistX - (waistX - bulbX) * 0.40,
+            yContact - waist,
+            bulbX + (waistX - bulbX) * 0.35,
+            yContact - rBulb,
+            bulbX,
+            yContact - rBulb,
+          )
+          // 3. Bulb round leading tip around (xTip, yContact)
+          ..cubicTo(
+            bulbX - (bulbX - xTip) * 0.5523,
+            yContact - rBulb,
+            xTip,
+            yContact - rBulb * 0.5523,
+            xTip,
+            yContact,
+          )
+          ..cubicTo(
+            xTip,
+            yContact + rBulb * 0.5523,
+            bulbX - (bulbX - xTip) * 0.5523,
+            yContact + rBulb,
+            bulbX,
+            yContact + rBulb,
+          )
+          // 4. Bottom bulb to waist
+          ..cubicTo(
+            bulbX + (waistX - bulbX) * 0.35,
+            yContact + rBulb,
+            waistX - (waistX - bulbX) * 0.40,
+            yContact + waist,
+            waistX,
+            yContact + waist,
+          )
+          // 5. Bottom waist to shoulder
+          ..cubicTo(
+            waistX + 6.0,
+            yContact + waist,
+            xContact - (xContact - waistX) * 0.38,
+            yContact + shoulder - (shoulder - waist) * 0.22,
+            xContact,
+            yContact + shoulder,
+          )
+          ..close();
+
+        if (surface != Colors.black) {
+          paint.shader = LinearGradient(
+            begin: Alignment.centerRight,
+            end: Alignment.centerLeft,
+            colors: [
+              Colors.black,
+              Color.lerp(Colors.black, surface, 0.35)!,
+              Color.lerp(Colors.black, surface, 0.85)!,
+              surface,
+            ],
+            stops: const [0.0, 0.30, 0.70, 1.0],
+          ).createShader(
+            Rect.fromLTRB(xTip, yContact - shoulder, xContact, yContact + shoulder),
+          );
+        }
+      }
+    } else {
+      // Detached airborne droplet expanding into upright card.
+      // Starts smoothly from the exact bulb center at detachment (progress = 0.28)
+      // and completes horizontal migration to settled center by progress = 0.46,
+      // perfectly matching the top-notch _fall interval (ending at 0.46 before _expand and _reveal).
+      final migrationProgress =
+          ((progress - 0.28) / (0.46 - 0.28)).clamp(0.0, 1.0);
+      final tMove = Curves.easeInOutCubic.transform(migrationProgress);
+
+      final maxReach = (settledCenterX - cutoutAnchorX).abs().clamp(60.0, 140.0);
+      final bulbCenterAtDetachment = isLeft
+          ? (cutoutAnchorX + maxReach * 0.68)
+          : (cutoutAnchorX - maxReach * 0.68);
+
+      final centerX = lerpDouble(bulbCenterAtDetachment, settledCenterX, tMove)! +
+          effectiveDragX;
+      final centerY = lerpDouble(cutoutAnchorY, settledCenterY, tMove)! +
+          effectiveDragY;
+
+      final dropSize = math.min(48.0, math.min(cardWidth, cardHeight)) *
+          (compact ? 1.0 : (0.32 + 0.68 * grow));
+      final width = lerpDouble(dropSize, cardWidth, expand)!;
+      final height = lerpDouble(dropSize, cardHeight, expand)!;
+      final corner =
+          lerpDouble(math.min(width, height) / 2, cardCorner, expand)!;
+
+      final rect = Rect.fromCenter(
+        center: Offset(centerX, centerY),
+        width: width,
+        height: height,
+      );
+
+      path = Path()
+        ..addRRect(RRect.fromRectAndRadius(rect, Radius.circular(corner)));
+    }
+
+    final screenLeft = -boxLeft;
+    final screenRight = screenSize.width - boxLeft;
+    final screenTop = -anchorTop;
+    final screenBottom = screenSize.height - anchorTop;
+
+    canvas.save();
+    canvas.clipRect(
+      Rect.fromLTRB(
+        screenLeft - 24.0,
+        screenTop - 24.0,
+        screenRight + 24.0,
+        screenBottom + 24.0,
+      ),
+    );
+
+    final shadowOpacity = expand > 0
+        ? lerpDouble(0.20, 0.26, expand)!
+        : (!compact && progress > 0.28
+            ? 0.20 * ((progress - 0.28) / 0.08).clamp(0.0, 1.0)
+            : 0.0);
+    final elevation = expand > 0 ? lerpDouble(8.0, 12.0, expand)! : 8.0;
+    if (shadowOpacity > 0) {
+      canvas.drawShadow(
+        path,
+        Colors.black.withValues(alpha: shadowOpacity),
+        elevation,
+        true,
+      );
+    }
+    canvas.drawPath(path, paint);
+    canvas.restore();
+
+    if (debugShowGuides) {
+      final boundsPaint = Paint()
+        ..color = const Color(0xFF00E5FF)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0;
+      final localBounds = Rect.fromCenter(
+        center: Offset(cutoutAnchorX, cutoutAnchorY),
+        width: geo.width,
+        height: geo.height,
+      );
+      canvas.drawRect(localBounds, boundsPaint);
+
+      final originPaint = Paint()
+        ..color = const Color(0xFFFF1744)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0;
+      canvas.drawLine(
+        Offset(cutoutAnchorX - 12, cutoutAnchorY),
+        Offset(cutoutAnchorX + 12, cutoutAnchorY),
+        originPaint,
+      );
+      canvas.drawLine(
+        Offset(cutoutAnchorX, cutoutAnchorY - 12),
+        Offset(cutoutAnchorX, cutoutAnchorY + 12),
+        originPaint,
+      );
     }
   }
 

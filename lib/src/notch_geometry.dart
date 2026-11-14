@@ -54,6 +54,24 @@ enum NotchShape {
   none,
 }
 
+/// The screen edge where the cutout or notch is located.
+enum CutoutEdge {
+  /// Cutout located along or attached to the top display edge.
+  top,
+
+  /// Cutout located along or attached to the left display edge.
+  left,
+
+  /// Cutout located along or attached to the right display edge.
+  right,
+
+  /// Cutout located along or attached to the bottom display edge.
+  bottom,
+
+  /// No cutout is present.
+  none,
+}
+
 /// Geometric properties of the screen's hardware camera cutout, notch, or island.
 @immutable
 class NotchGeometry {
@@ -70,8 +88,9 @@ class NotchGeometry {
     required this.confidence,
     required this.shape,
     required this.hasCutout,
+    CutoutEdge? edge,
     this.devicePixelRatio = 1.0,
-  });
+  }) : edge = edge ?? (hasCutout ? CutoutEdge.top : CutoutEdge.none);
 
   /// The bounding rectangle of the cutout in logical pixels, if available.
   final Rect? bounds;
@@ -109,6 +128,9 @@ class NotchGeometry {
   /// Whether a physical camera cutout, notch, or island was detected.
   final bool hasCutout;
 
+  /// Screen edge where the cutout is located.
+  final CutoutEdge edge;
+
   /// The device pixel ratio at the time of measurement.
   final double devicePixelRatio;
 
@@ -122,6 +144,55 @@ class NotchGeometry {
       return math.max(0.0, bottom);
     }
     return math.max(0.0, bottom - 1.0);
+  }
+
+  /// Exact 2D anchor point where the fluid droplet emerges into the display.
+  Offset get anchorPoint {
+    switch (edge) {
+      case CutoutEdge.left:
+        final x = hasCutout
+            ? math.max(0.0, bounds != null ? bounds!.right - 1.0 : insets.left)
+            : insets.left;
+        return Offset(x, center.dy);
+      case CutoutEdge.right:
+        final x = hasCutout
+            ? math.min(
+                screenSize.width,
+                bounds != null
+                    ? bounds!.left + 1.0
+                    : screenSize.width - insets.right,
+              )
+            : screenSize.width - insets.right;
+        return Offset(x, center.dy);
+      case CutoutEdge.bottom:
+        final y = hasCutout
+            ? math.min(
+                screenSize.height,
+                bounds != null
+                    ? bounds!.top + 1.0
+                    : screenSize.height - insets.bottom,
+              )
+            : screenSize.height - insets.bottom;
+        return Offset(center.dx, y);
+      case CutoutEdge.top:
+      case CutoutEdge.none:
+        return Offset(anchorX, anchorTop);
+    }
+  }
+
+  /// Direction vector along which the droplet emerges into the display.
+  Offset get emergenceDirection {
+    switch (edge) {
+      case CutoutEdge.left:
+        return const Offset(1.0, 0.0);
+      case CutoutEdge.right:
+        return const Offset(-1.0, 0.0);
+      case CutoutEdge.bottom:
+        return const Offset(0.0, -1.0);
+      case CutoutEdge.top:
+      case CutoutEdge.none:
+        return const Offset(0.0, 1.0);
+    }
   }
 
   /// Empty geometry constant for displays with no insets or cutouts.
@@ -138,6 +209,7 @@ class NotchGeometry {
     confidence: NotchGeometryConfidence.none,
     shape: NotchShape.none,
     hasCutout: false,
+    edge: CutoutEdge.none,
     devicePixelRatio: 1.0,
   );
 
@@ -157,6 +229,7 @@ class NotchGeometry {
         other.confidence == confidence &&
         other.shape == shape &&
         other.hasCutout == hasCutout &&
+        other.edge == edge &&
         other.devicePixelRatio == devicePixelRatio;
   }
 
@@ -174,12 +247,13 @@ class NotchGeometry {
         confidence,
         shape,
         hasCutout,
+        edge,
         devicePixelRatio,
       );
 
   @override
   String toString() =>
-      'NotchGeometry(shape: $shape, source: $source, confidence: $confidence, '
+      'NotchGeometry(shape: $shape, edge: $edge, source: $source, confidence: $confidence, '
       'bounds: $bounds, bottom: $bottom, hasCutout: $hasCutout)';
 }
 
@@ -220,51 +294,93 @@ class NotchGeometryDetector {
     final viewportCenter = (padding.left + size.width - padding.right) / 2;
 
     // 1. Check for physical cutout display features
-    final candidates = <Rect>[];
+    final topCandidates = <Rect>[];
+    final leftCandidates = <Rect>[];
+    final rightCandidates = <Rect>[];
+    final bottomCandidates = <Rect>[];
+
     for (final feature in mediaQuery.displayFeatures) {
       if (feature.type != DisplayFeatureType.cutout) continue;
       final bounds = feature.bounds;
       if (bounds.isEmpty || !bounds.isFinite) continue;
 
-      // Filter cutouts outside the horizontal active viewport bounds
-      if (bounds.right <= padding.left ||
-          bounds.left >= size.width - padding.right) {
-        continue;
-      }
-
-      // In landscape orientation, cutouts located on the left or right edges
-      // (side cutouts) must not be treated as top drop anchors.
-      if (orientation == Orientation.landscape) {
-        final sideMarginLeft = math.max(padding.left, 24.0);
-        final sideMarginRight = math.max(padding.right, 24.0);
-        final isLeftSide = bounds.left <= sideMarginLeft &&
-            bounds.width < size.width * 0.5;
-        final isRightSide = bounds.right >= size.width - sideMarginRight &&
-            bounds.width < size.width * 0.5;
-        if (isLeftSide || isRightSide) {
-          continue;
-        }
-      }
-
-      // Check whether cutout is located in the top region of the display.
-      // Top cutouts must start near the top boundary (at or above safe padding
-      // or within the top 32dp), and bottom must not exceed reasonable notch depth.
+      // Classify edge based on position, insets, and screen boundaries
       final topLimit = math.max(padding.top, 32.0);
       final bottomLimit = math.max(padding.top + 24.0, 68.0);
-      if (bounds.top <= topLimit && bounds.bottom <= bottomLimit) {
-        candidates.add(bounds);
+      final sideMarginLeft = math.max(padding.left, 48.0);
+      final sideMarginRight = math.max(padding.right, 48.0);
+
+      final hasTopInset = padding.top > 0;
+      final isInsideTopInset = hasTopInset &&
+          bounds.top <= padding.top &&
+          bounds.bottom <= math.max(padding.top + 8.0, 48.0);
+
+      final isLeftSide =
+          ((padding.left > 0 && bounds.right <= padding.left + 4.0) ||
+              (bounds.left <= 2.0 && bounds.width < size.width * 0.5) ||
+              (!isInsideTopInset &&
+                  orientation == Orientation.landscape &&
+                  bounds.left <= sideMarginLeft &&
+                  bounds.width < size.width * 0.5));
+
+      final isRightSide =
+          ((padding.right > 0 &&
+                  bounds.left >= size.width - padding.right - 4.0) ||
+              (bounds.right >= size.width - 2.0 &&
+                  bounds.width < size.width * 0.5) ||
+              (!isInsideTopInset &&
+                  orientation == Orientation.landscape &&
+                  bounds.right >= size.width - sideMarginRight &&
+                  bounds.width < size.width * 0.5));
+
+      final isTopRegion =
+          bounds.top <= topLimit && bounds.bottom <= bottomLimit;
+      final isBottomRegion =
+          bounds.bottom >= size.height - math.max(padding.bottom, 48.0);
+
+      if (isLeftSide || isRightSide) {
+        if (isLeftSide) {
+          leftCandidates.add(bounds);
+        } else {
+          rightCandidates.add(bounds);
+        }
+      } else if (isTopRegion) {
+        topCandidates.add(bounds);
+      } else if (isBottomRegion) {
+        bottomCandidates.add(bounds);
+      } else {
+        // Fallback by minimum distance to edges
+        final dTop = bounds.top;
+        final dBottom = size.height - bounds.bottom;
+        final dLeft = bounds.left;
+        final dRight = size.width - bounds.right;
+        final minD = math.min(math.min(dTop, dBottom), math.min(dLeft, dRight));
+        if (minD == dTop) {
+          topCandidates.add(bounds);
+        } else if (minD == dLeft) {
+          leftCandidates.add(bounds);
+        } else if (minD == dRight) {
+          rightCandidates.add(bounds);
+        } else {
+          bottomCandidates.add(bounds);
+        }
       }
     }
 
-    if (candidates.isNotEmpty) {
+    // Multiple Cutout Priority:
+    // 1. Top cutout takes priority.
+    // 2. Otherwise select a valid left or right cutout.
+    // 3. Bottom-only cutouts retain the safe existing fallback.
+    // 4. Never combine unrelated cutouts into one bounding rectangle.
+    if (topCandidates.isNotEmpty) {
       // Find candidate closest to viewport center
-      candidates.sort((a, b) => (a.center.dx - viewportCenter)
+      topCandidates.sort((a, b) => (a.center.dx - viewportCenter)
           .abs()
           .compareTo((b.center.dx - viewportCenter).abs()));
 
-      Rect resolved = candidates.first;
-      if (candidates.length > 1) {
-        final second = candidates[1];
+      Rect resolved = topCandidates.first;
+      if (topCandidates.length > 1) {
+        final second = topCandidates[1];
         // If two cutouts are adjacent (e.g. dual punch holes separated by a small gap),
         // combine their bounding boxes into a single cluster.
         final gapX = (resolved.center.dx - second.center.dx).abs() -
@@ -319,6 +435,7 @@ class NotchGeometryDetector {
               confidence: NotchGeometryConfidence.calibrated,
               shape: NotchShape.punchHole,
               hasCutout: true,
+              edge: CutoutEdge.top,
               devicePixelRatio: dpr,
             );
           } else if (resolved.width <= 120.0) {
@@ -341,13 +458,14 @@ class NotchGeometryDetector {
               confidence: NotchGeometryConfidence.calibrated,
               shape: NotchShape.pill,
               hasCutout: true,
+              edge: CutoutEdge.top,
               devicePixelRatio: dpr,
             );
           }
         }
       }
 
-      final shape = _classifyShape(resolved);
+      final shape = _classifyShape(resolved, CutoutEdge.top);
       return NotchGeometry(
         bounds: resolved,
         center: resolved.center,
@@ -361,6 +479,77 @@ class NotchGeometryDetector {
         confidence: NotchGeometryConfidence.exact,
         shape: shape,
         hasCutout: true,
+        edge: CutoutEdge.top,
+        devicePixelRatio: dpr,
+      );
+    }
+
+    if (leftCandidates.isNotEmpty) {
+      final viewportVerticalCenter = (padding.top + size.height - padding.bottom) / 2;
+      leftCandidates.sort((a, b) => (a.center.dy - viewportVerticalCenter)
+          .abs()
+          .compareTo((b.center.dy - viewportVerticalCenter).abs()));
+
+      Rect resolved = leftCandidates.first;
+      if (leftCandidates.length > 1) {
+        final second = leftCandidates[1];
+        final gapY = (resolved.center.dy - second.center.dy).abs() -
+            (resolved.height + second.height) / 2;
+        if (gapY <= 16.0 && (resolved.left - second.left).abs() <= 12.0) {
+          resolved = resolved.expandToInclude(second);
+        }
+      }
+
+      final shape = _classifyShape(resolved, CutoutEdge.left);
+      return NotchGeometry(
+        bounds: resolved,
+        center: resolved.center,
+        width: resolved.width,
+        height: resolved.height,
+        top: resolved.top,
+        bottom: resolved.bottom,
+        screenSize: size,
+        insets: padding,
+        source: NotchGeometrySource.displayFeature,
+        confidence: NotchGeometryConfidence.exact,
+        shape: shape,
+        hasCutout: true,
+        edge: CutoutEdge.left,
+        devicePixelRatio: dpr,
+      );
+    }
+
+    if (rightCandidates.isNotEmpty) {
+      final viewportVerticalCenter = (padding.top + size.height - padding.bottom) / 2;
+      rightCandidates.sort((a, b) => (a.center.dy - viewportVerticalCenter)
+          .abs()
+          .compareTo((b.center.dy - viewportVerticalCenter).abs()));
+
+      Rect resolved = rightCandidates.first;
+      if (rightCandidates.length > 1) {
+        final second = rightCandidates[1];
+        final gapY = (resolved.center.dy - second.center.dy).abs() -
+            (resolved.height + second.height) / 2;
+        if (gapY <= 16.0 && (resolved.right - second.right).abs() <= 12.0) {
+          resolved = resolved.expandToInclude(second);
+        }
+      }
+
+      final shape = _classifyShape(resolved, CutoutEdge.right);
+      return NotchGeometry(
+        bounds: resolved,
+        center: resolved.center,
+        width: resolved.width,
+        height: resolved.height,
+        top: resolved.top,
+        bottom: resolved.bottom,
+        screenSize: size,
+        insets: padding,
+        source: NotchGeometrySource.displayFeature,
+        confidence: NotchGeometryConfidence.exact,
+        shape: shape,
+        hasCutout: true,
+        edge: CutoutEdge.right,
         devicePixelRatio: dpr,
       );
     }
@@ -450,14 +639,19 @@ class NotchGeometryDetector {
     );
   }
 
-  static NotchShape _classifyShape(Rect bounds) {
-    // Cutouts attached to or touching the upper display edge are notches
-    // (including wide notches and centered teardrop / waterdrop notches).
-    if (bounds.top <= 2.0) {
+  static NotchShape _classifyShape(Rect bounds, [CutoutEdge edge = CutoutEdge.top]) {
+    // Cutouts attached to or touching the display edge are notches if wide
+    if (edge == CutoutEdge.top && bounds.top <= 2.0) {
+      return NotchShape.notch;
+    }
+    if (edge == CutoutEdge.left && bounds.left <= 2.0 && bounds.width > 36.0) {
+      return NotchShape.notch;
+    }
+    if (edge == CutoutEdge.right && bounds.width > 36.0) {
       return NotchShape.notch;
     }
     final aspect = bounds.width / math.max(1.0, bounds.height);
-    if (aspect > 1.35) {
+    if (aspect > 1.35 || aspect < 0.74) {
       return NotchShape.pill;
     }
     return NotchShape.punchHole;
@@ -542,6 +736,51 @@ class AndroidCutoutGeometryProvider {
               : NotchGeometryConfidence.none,
           shape: NotchShape.none,
           hasCutout: false,
+          edge: CutoutEdge.none,
+          devicePixelRatio: mediaQuery.devicePixelRatio,
+        );
+        return _cached;
+      }
+
+      final edgeStr = res['edge'] as String?;
+      final CutoutEdge edge;
+      switch (edgeStr) {
+        case 'left':
+          edge = CutoutEdge.left;
+          break;
+        case 'right':
+          edge = CutoutEdge.right;
+          break;
+        case 'bottom':
+          edge = CutoutEdge.bottom;
+          break;
+        case 'top':
+          edge = CutoutEdge.top;
+          break;
+        default:
+          edge = CutoutEdge.top;
+      }
+
+      if (edge == CutoutEdge.bottom) {
+        // Bottom-only cutouts retain the safe existing fallback
+        _cached = NotchGeometry(
+          bounds: null,
+          center: Offset(mediaQuery.size.width / 2, mediaQuery.padding.top / 2),
+          width: 0.0,
+          height: 0.0,
+          top: 0.0,
+          bottom: mediaQuery.padding.top,
+          screenSize: mediaQuery.size,
+          insets: insets,
+          source: mediaQuery.padding.top > 0
+              ? NotchGeometrySource.safeArea
+              : NotchGeometrySource.none,
+          confidence: mediaQuery.padding.top > 0
+              ? NotchGeometryConfidence.fallback
+              : NotchGeometryConfidence.none,
+          shape: NotchShape.none,
+          hasCutout: false,
+          edge: CutoutEdge.none,
           devicePixelRatio: mediaQuery.devicePixelRatio,
         );
         return _cached;
@@ -553,25 +792,9 @@ class AndroidCutoutGeometryProvider {
       Rect? resolvedBounds;
       NotchGeometrySource source = NotchGeometrySource.displayFeature;
 
-      // 1. Prefer and validate native cutoutPath on API 31+
-      if (hasPath && res.containsKey('pathLeft')) {
-        final pLeft = (res['pathLeft'] as num).toDouble();
-        final pTop = (res['pathTop'] as num).toDouble();
-        final pRight = (res['pathRight'] as num).toDouble();
-        final pBottom = (res['pathBottom'] as num).toDouble();
-        final candidate =
-            Rect.fromLTRB(pLeft / dpr, pTop / dpr, pRight / dpr, pBottom / dpr);
-        if (candidate.isFinite &&
-            !candidate.isEmpty &&
-            candidate.width > 0 &&
-            candidate.height > 0) {
-          resolvedBounds = candidate;
-          source = NotchGeometrySource.nativePath;
-        }
-      }
-
-      // 2. Fall back to standard DisplayCutout boundingRects (API 28+)
-      if (resolvedBounds == null && res.containsKey('boundLeft')) {
+      // Extract edge-specific boundingRect (API 28+)
+      Rect? boundRect;
+      if (res.containsKey('boundLeft')) {
         final bLeft = (res['boundLeft'] as num).toDouble();
         final bTop = (res['boundTop'] as num).toDouble();
         final bRight = (res['boundRight'] as num).toDouble();
@@ -582,16 +805,45 @@ class AndroidCutoutGeometryProvider {
             !candidate.isEmpty &&
             candidate.width > 0 &&
             candidate.height > 0) {
-          resolvedBounds = candidate;
-          source = NotchGeometrySource.displayFeature;
+          boundRect = candidate;
         }
+      }
+
+      // 1. Prefer and validate native cutoutPath on API 31+
+      // Ensure candidate path bounds do not combine unrelated cutouts across screens
+      if (hasPath && res.containsKey('pathLeft')) {
+        final pLeft = (res['pathLeft'] as num).toDouble();
+        final pTop = (res['pathTop'] as num).toDouble();
+        final pRight = (res['pathRight'] as num).toDouble();
+        final pBottom = (res['pathBottom'] as num).toDouble();
+        final candidate =
+            Rect.fromLTRB(pLeft / dpr, pTop / dpr, pRight / dpr, pBottom / dpr);
+        final isValidCandidate = candidate.isFinite &&
+            !candidate.isEmpty &&
+            candidate.width > 0 &&
+            candidate.height > 0 &&
+            (boundRect == null ||
+                (candidate.left >= boundRect.left - 4.0 &&
+                    candidate.top >= boundRect.top - 4.0 &&
+                    candidate.right <= boundRect.right + 4.0 &&
+                    candidate.bottom <= boundRect.bottom + 4.0));
+        if (isValidCandidate) {
+          resolvedBounds = candidate;
+          source = NotchGeometrySource.nativePath;
+        }
+      }
+
+      // 2. Fall back to standard DisplayCutout boundingRects (API 28+)
+      if (resolvedBounds == null && boundRect != null) {
+        resolvedBounds = boundRect;
+        source = NotchGeometrySource.displayFeature;
       }
 
       if (resolvedBounds == null) {
         return null;
       }
 
-      final shape = NotchGeometryDetector._classifyShape(resolvedBounds);
+      final shape = NotchGeometryDetector._classifyShape(resolvedBounds, edge);
 
       _cached = NotchGeometry(
         bounds: resolvedBounds,
@@ -606,6 +858,7 @@ class AndroidCutoutGeometryProvider {
         confidence: NotchGeometryConfidence.exact,
         shape: shape,
         hasCutout: true,
+        edge: edge,
         devicePixelRatio: dpr,
       );
       return _cached;

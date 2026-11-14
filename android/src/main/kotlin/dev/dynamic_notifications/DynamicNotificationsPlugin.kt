@@ -114,6 +114,7 @@ class DynamicNotificationsPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
         if (cutout == null) {
             data["hasCutout"] = false
             data["hasPath"] = false
+            data["edge"] = "none"
             cachedGeometry = data
             return data
         }
@@ -141,17 +142,101 @@ class DynamicNotificationsPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
             data["hasPath"] = false
         }
 
-        // Standard DisplayCutout bounding rects (API 28+)
+        // DisplayCutout edge classification and bounding rect resolution (API 28+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            val rects = cutout.boundingRects
-            if (rects.isNotEmpty()) {
-                val topRect = rects.firstOrNull { it.top == 0 } ?: rects.first()
-                data["boundLeft"] = topRect.left.toDouble()
-                data["boundTop"] = topRect.top.toDouble()
-                data["boundRight"] = topRect.right.toDouble()
-                data["boundBottom"] = topRect.bottom.toDouble()
-                data["boundWidth"] = topRect.width().toDouble()
-                data["boundHeight"] = topRect.height().toDouble()
+            var selectedRect: android.graphics.Rect? = null
+            var selectedEdge = "none"
+
+            // API 29+ (Android Q) exposes per-edge bounding rects
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val topRect = cutout.boundingRectTop
+                val leftRect = cutout.boundingRectLeft
+                val rightRect = cutout.boundingRectRight
+                val bottomRect = cutout.boundingRectBottom
+
+                if (!topRect.isEmpty) {
+                    selectedEdge = "top"
+                    selectedRect = topRect
+                } else if (!leftRect.isEmpty) {
+                    selectedEdge = "left"
+                    selectedRect = leftRect
+                } else if (!rightRect.isEmpty) {
+                    selectedEdge = "right"
+                    selectedRect = rightRect
+                } else if (!bottomRect.isEmpty) {
+                    selectedEdge = "bottom"
+                    selectedRect = bottomRect
+                }
+            }
+
+            // Fallback for API 28 or when per-edge rects were not populated
+            if (selectedRect == null) {
+                val rects = cutout.boundingRects
+                if (rects.isNotEmpty()) {
+                    val decorView = activity?.window?.decorView
+                    val screenWidth = decorView?.width ?: 0
+                    val screenHeight = decorView?.height ?: 0
+
+                    // Top cutout takes priority
+                    val topCandidate = rects.firstOrNull { it.top <= 2 || (it.top <= 48 && it.bottom <= 120) }
+                    if (topCandidate != null) {
+                        selectedEdge = "top"
+                        selectedRect = topCandidate
+                    } else {
+                        val leftCandidate = rects.firstOrNull { it.left <= 2 || (screenWidth > 0 && it.left < screenWidth * 0.2) }
+                        if (leftCandidate != null) {
+                            selectedEdge = "left"
+                            selectedRect = leftCandidate
+                        } else {
+                            val rightCandidate = rects.firstOrNull { (screenWidth > 0 && it.right >= screenWidth - 2) || (screenWidth > 0 && it.right > screenWidth * 0.8) }
+                            if (rightCandidate != null) {
+                                selectedEdge = "right"
+                                selectedRect = rightCandidate
+                            } else {
+                                val bottomCandidate = rects.firstOrNull { (screenHeight > 0 && it.bottom >= screenHeight - 2) }
+                                if (bottomCandidate != null) {
+                                    selectedEdge = "bottom"
+                                    selectedRect = bottomCandidate
+                                } else {
+                                    selectedEdge = "top"
+                                    selectedRect = rects.first()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            data["edge"] = selectedEdge
+            if (selectedRect != null && !selectedRect.isEmpty) {
+                data["boundLeft"] = selectedRect.left.toDouble()
+                data["boundTop"] = selectedRect.top.toDouble()
+                data["boundRight"] = selectedRect.right.toDouble()
+                data["boundBottom"] = selectedRect.bottom.toDouble()
+                data["boundWidth"] = selectedRect.width().toDouble()
+                data["boundHeight"] = selectedRect.height().toDouble()
+
+                // If cutoutPath encompasses multiple cutouts across screens, invalidate hasPath
+                if (data["hasPath"] == true) {
+                    val pLeft = data["pathLeft"] as? Double ?: 0.0
+                    val pTop = data["pathTop"] as? Double ?: 0.0
+                    val pRight = data["pathRight"] as? Double ?: 0.0
+                    val pBottom = data["pathBottom"] as? Double ?: 0.0
+
+                    val boundsMatch = (pLeft >= selectedRect.left - 4) &&
+                            (pTop >= selectedRect.top - 4) &&
+                            (pRight <= selectedRect.right + 4) &&
+                            (pBottom <= selectedRect.bottom + 4)
+                    if (!boundsMatch) {
+                        data["hasPath"] = false
+                        data.remove("pathLeft")
+                        data.remove("pathTop")
+                        data.remove("pathRight")
+                        data.remove("pathBottom")
+                        data.remove("pathWidth")
+                        data.remove("pathHeight")
+                    }
+                }
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 val waterfall = cutout.waterfallInsets
@@ -187,6 +272,7 @@ class DynamicNotificationsPlugin : FlutterPlugin, MethodCallHandler, ActivityAwa
         data["targetSdk"] = activity?.applicationInfo?.targetSdkVersion ?: 0
         data["hasCutout"] = false
         data["hasPath"] = false
+        data["edge"] = "none"
         return data
     }
 }

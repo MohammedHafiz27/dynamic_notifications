@@ -238,9 +238,9 @@ void main() {
     );
 
     test(
-      'ignores side cutouts in landscape orientation for top drop origin',
+      'detects side cutouts on left edge in landscape orientation',
       () {
-        // In landscape, phone camera is on the left or right edge
+        // In landscape, phone camera is on the left edge
         const landscapePhone = MediaQueryData(
           size: Size(892, 412),
           viewPadding: EdgeInsets.only(left: 48),
@@ -258,9 +258,11 @@ void main() {
           platform: TargetPlatform.android,
         );
 
-        // The side cutout is not on the top edge, so it should not be used as a top drop anchor
-        expect(geometry.hasCutout, isFalse);
-        expect(geometry.source, NotchGeometrySource.none);
+        expect(geometry.hasCutout, isTrue);
+        expect(geometry.edge, CutoutEdge.left);
+        expect(geometry.source, NotchGeometrySource.displayFeature);
+        expect(geometry.anchorPoint, const Offset(33.0, 206.0));
+        expect(geometry.emergenceDirection, const Offset(1.0, 0.0));
       },
     );
 
@@ -406,7 +408,7 @@ void main() {
       expect(geometry.anchorTop, 31.0);
     });
 
-    test('ignores corner cutout on side edge when rotated to landscape', () {
+    test('detects corner cutout on side edge when rotated to landscape', () {
       // Corner punch hole (e.g. Galaxy S10) rotated into landscape mode:
       // The camera is on the left edge touching x = 0 at y = 20.
       const landscapeCorner = MediaQueryData(
@@ -426,10 +428,12 @@ void main() {
         platform: TargetPlatform.android,
       );
 
-      expect(geometry.hasCutout, isFalse);
+      expect(geometry.hasCutout, isTrue);
+      expect(geometry.edge, CutoutEdge.left);
+      expect(geometry.anchorPoint, const Offset(23.0, 32.0));
     });
 
-    test('ignores floating side punch hole in landscape with side insets', () {
+    test('detects floating side punch hole in landscape with side insets', () {
       // Floating side punch hole in landscape orientation with side insets:
       // The camera is at x: 16..40, y: 12..36 on the left edge inside the 48dp side safe area.
       const landscapeFloatingSide = MediaQueryData(
@@ -449,7 +453,9 @@ void main() {
         platform: TargetPlatform.android,
       );
 
-      expect(geometry.hasCutout, isFalse);
+      expect(geometry.hasCutout, isTrue);
+      expect(geometry.edge, CutoutEdge.left);
+      expect(geometry.anchorPoint, const Offset(39.0, 24.0));
     });
 
     test('falls back to mediaQuery.padding if viewPadding is zero', () {
@@ -972,7 +978,7 @@ void main() {
       },
     );
 
-    test('ignores side punch hole in immersive landscape with zero insets', () {
+    test('detects side punch hole in immersive landscape with zero insets', () {
       // In immersive landscape mode, insets are zero. A punch hole is physically
       // located on the side edge (x: 16..40, y: 12..36).
       const immersiveLandscape = MediaQueryData(
@@ -993,12 +999,14 @@ void main() {
         platform: TargetPlatform.android,
       );
 
-      // The cutout is on the side edge (x = 16..40), so it must not be treated as a top drop anchor
-      expect(geometry.hasCutout, isFalse);
-      expect(geometry.source, NotchGeometrySource.none);
+      expect(geometry.hasCutout, isTrue);
+      expect(geometry.edge, CutoutEdge.left);
+      expect(geometry.source, NotchGeometrySource.displayFeature);
+      expect(geometry.anchorPoint, const Offset(39.0, 24.0));
+      expect(geometry.emergenceDirection, const Offset(1.0, 0.0));
     });
 
-    test('ignores side punch hole in immersive landscape on right edge with zero insets', () {
+    test('detects side punch hole in immersive landscape on right edge with zero insets', () {
       const immersiveLandscapeRight = MediaQueryData(
         size: Size(892, 412),
         padding: EdgeInsets.zero,
@@ -1017,8 +1025,11 @@ void main() {
         platform: TargetPlatform.android,
       );
 
-      expect(geometry.hasCutout, isFalse);
-      expect(geometry.source, NotchGeometrySource.none);
+      expect(geometry.hasCutout, isTrue);
+      expect(geometry.edge, CutoutEdge.right);
+      expect(geometry.source, NotchGeometrySource.displayFeature);
+      expect(geometry.anchorPoint, const Offset(857.0, 24.0));
+      expect(geometry.emergenceDirection, const Offset(-1.0, 0.0));
     });
 
     test('detects centered top punch hole on tablet in landscape', () {
@@ -1868,5 +1879,397 @@ void main() {
         expect(find.text('First Notification'), findsNothing);
       },
     );
+  });
+
+  group('Horizontal Side-Cutout Geometry and Priority', () {
+    test('classifies CutoutEdge.left correctly with accurate anchorPoint and emergenceDirection', () {
+      const mediaQuery = MediaQueryData(
+        size: Size(892, 412),
+        viewPadding: EdgeInsets.only(left: 48),
+        displayFeatures: [
+          DisplayFeature(
+            bounds: Rect.fromLTWH(12, 190, 24, 24),
+            type: DisplayFeatureType.cutout,
+            state: DisplayFeatureState.unknown,
+          ),
+        ],
+      );
+
+      final geo = NotchGeometryDetector.fromMediaQuery(
+        mediaQuery: mediaQuery,
+        platform: TargetPlatform.android,
+      );
+
+      expect(geo.hasCutout, isTrue);
+      expect(geo.edge, CutoutEdge.left);
+      expect(geo.anchorPoint, const Offset(35.0, 202.0));
+      expect(geo.emergenceDirection, const Offset(1.0, 0.0));
+      expect(geo.shape, NotchShape.punchHole);
+    });
+
+    test('classifies CutoutEdge.right correctly with accurate anchorPoint and emergenceDirection', () {
+      const mediaQuery = MediaQueryData(
+        size: Size(892, 412),
+        viewPadding: EdgeInsets.only(right: 48),
+        displayFeatures: [
+          DisplayFeature(
+            bounds: Rect.fromLTWH(856, 190, 24, 24),
+            type: DisplayFeatureType.cutout,
+            state: DisplayFeatureState.unknown,
+          ),
+        ],
+      );
+
+      final geo = NotchGeometryDetector.fromMediaQuery(
+        mediaQuery: mediaQuery,
+        platform: TargetPlatform.android,
+      );
+
+      expect(geo.hasCutout, isTrue);
+      expect(geo.edge, CutoutEdge.right);
+      expect(geo.anchorPoint, const Offset(857.0, 202.0));
+      expect(geo.emergenceDirection, const Offset(-1.0, 0.0));
+      expect(geo.shape, NotchShape.punchHole);
+    });
+
+    test('multiple cutouts priority: top cutout takes priority over left and right cutouts', () {
+      const mediaQuery = MediaQueryData(
+        size: Size(892, 412),
+        viewPadding: EdgeInsets.only(top: 24, left: 48, right: 48),
+        displayFeatures: [
+          DisplayFeature(
+            bounds: Rect.fromLTWH(12, 190, 24, 24),
+            type: DisplayFeatureType.cutout,
+            state: DisplayFeatureState.unknown,
+          ),
+          DisplayFeature(
+            bounds: Rect.fromLTWH(434, 4, 24, 24),
+            type: DisplayFeatureType.cutout,
+            state: DisplayFeatureState.unknown,
+          ),
+          DisplayFeature(
+            bounds: Rect.fromLTWH(856, 190, 24, 24),
+            type: DisplayFeatureType.cutout,
+            state: DisplayFeatureState.unknown,
+          ),
+        ],
+      );
+
+      final geo = NotchGeometryDetector.fromMediaQuery(
+        mediaQuery: mediaQuery,
+        platform: TargetPlatform.android,
+      );
+
+      expect(geo.hasCutout, isTrue);
+      expect(geo.edge, CutoutEdge.top);
+      expect(geo.bounds, const Rect.fromLTWH(434, 4, 24, 24));
+      expect(geo.anchorPoint, const Offset(446.0, 27.0));
+      expect(geo.emergenceDirection, const Offset(0.0, 1.0));
+    });
+
+    test('multiple cutouts priority: left cutout takes priority over right cutout when no top cutout exists', () {
+      const mediaQuery = MediaQueryData(
+        size: Size(892, 412),
+        viewPadding: EdgeInsets.only(left: 48, right: 48),
+        displayFeatures: [
+          DisplayFeature(
+            bounds: Rect.fromLTWH(856, 190, 24, 24),
+            type: DisplayFeatureType.cutout,
+            state: DisplayFeatureState.unknown,
+          ),
+          DisplayFeature(
+            bounds: Rect.fromLTWH(12, 190, 24, 24),
+            type: DisplayFeatureType.cutout,
+            state: DisplayFeatureState.unknown,
+          ),
+        ],
+      );
+
+      final geo = NotchGeometryDetector.fromMediaQuery(
+        mediaQuery: mediaQuery,
+        platform: TargetPlatform.android,
+      );
+
+      expect(geo.hasCutout, isTrue);
+      expect(geo.edge, CutoutEdge.left);
+      expect(geo.bounds, const Rect.fromLTWH(12, 190, 24, 24));
+    });
+
+    test('multiple cutouts priority: bottom-only cutouts retain safe fallback with hasCutout false', () {
+      const mediaQuery = MediaQueryData(
+        size: Size(412, 892),
+        viewPadding: EdgeInsets.only(bottom: 48),
+        displayFeatures: [
+          DisplayFeature(
+            bounds: Rect.fromLTWH(194, 860, 24, 24),
+            type: DisplayFeatureType.cutout,
+            state: DisplayFeatureState.unknown,
+          ),
+        ],
+      );
+
+      final geo = NotchGeometryDetector.fromMediaQuery(
+        mediaQuery: mediaQuery,
+        platform: TargetPlatform.android,
+      );
+
+      expect(geo.hasCutout, isFalse);
+      expect(geo.edge, CutoutEdge.none);
+      expect(geo.shape, NotchShape.none);
+    });
+
+    test('multiple cutouts: never combines unrelated cutouts on opposite screen edges', () {
+      const mediaQuery = MediaQueryData(
+        size: Size(892, 412),
+        viewPadding: EdgeInsets.only(left: 48, right: 48),
+        displayFeatures: [
+          DisplayFeature(
+            bounds: Rect.fromLTWH(10, 100, 24, 24),
+            type: DisplayFeatureType.cutout,
+            state: DisplayFeatureState.unknown,
+          ),
+          DisplayFeature(
+            bounds: Rect.fromLTWH(858, 100, 24, 24),
+            type: DisplayFeatureType.cutout,
+            state: DisplayFeatureState.unknown,
+          ),
+        ],
+      );
+
+      final geo = NotchGeometryDetector.fromMediaQuery(
+        mediaQuery: mediaQuery,
+        platform: TargetPlatform.android,
+      );
+
+      expect(geo.hasCutout, isTrue);
+      expect(geo.edge, CutoutEdge.left);
+      expect(geo.bounds, const Rect.fromLTWH(10, 100, 24, 24));
+      expect(geo.bounds!.width, 24.0);
+    });
+
+    test('merges adjacent dual punch holes on side edge if gap is small', () {
+      const mediaQuery = MediaQueryData(
+        size: Size(892, 412),
+        viewPadding: EdgeInsets.only(left: 48),
+        displayFeatures: [
+          DisplayFeature(
+            bounds: Rect.fromLTWH(12, 180, 20, 20),
+            type: DisplayFeatureType.cutout,
+            state: DisplayFeatureState.unknown,
+          ),
+          DisplayFeature(
+            bounds: Rect.fromLTWH(12, 208, 20, 20),
+            type: DisplayFeatureType.cutout,
+            state: DisplayFeatureState.unknown,
+          ),
+        ],
+      );
+
+      final geo = NotchGeometryDetector.fromMediaQuery(
+        mediaQuery: mediaQuery,
+        platform: TargetPlatform.android,
+      );
+
+      expect(geo.hasCutout, isTrue);
+      expect(geo.edge, CutoutEdge.left);
+      expect(geo.bounds, const Rect.fromLTWH(12, 180, 20, 48));
+      expect(geo.shape, NotchShape.pill);
+    });
+
+    test('orientation change: portrait top notch to landscape side cutout updates geometry seamlessly', () {
+      const portraitQuery = MediaQueryData(
+        size: Size(412, 892),
+        viewPadding: EdgeInsets.only(top: 48),
+        displayFeatures: [
+          DisplayFeature(
+            bounds: Rect.fromLTWH(194, 10, 24, 24),
+            type: DisplayFeatureType.cutout,
+            state: DisplayFeatureState.unknown,
+          ),
+        ],
+      );
+
+      final portraitGeo = NotchGeometryDetector.fromMediaQuery(
+        mediaQuery: portraitQuery,
+        platform: TargetPlatform.android,
+      );
+
+      expect(portraitGeo.hasCutout, isTrue);
+      expect(portraitGeo.edge, CutoutEdge.top);
+      expect(portraitGeo.anchorPoint, const Offset(206.0, 33.0));
+
+      const landscapeQuery = MediaQueryData(
+        size: Size(892, 412),
+        viewPadding: EdgeInsets.only(left: 48),
+        displayFeatures: [
+          DisplayFeature(
+            bounds: Rect.fromLTWH(10, 194, 24, 24),
+            type: DisplayFeatureType.cutout,
+            state: DisplayFeatureState.unknown,
+          ),
+        ],
+      );
+
+      final landscapeGeo = NotchGeometryDetector.fromMediaQuery(
+        mediaQuery: landscapeQuery,
+        platform: TargetPlatform.android,
+      );
+
+      expect(landscapeGeo.hasCutout, isTrue);
+      expect(landscapeGeo.edge, CutoutEdge.left);
+      expect(landscapeGeo.anchorPoint, const Offset(33.0, 206.0));
+      expect(landscapeGeo.emergenceDirection, const Offset(1.0, 0.0));
+    });
+
+    test('AndroidCutoutGeometryProvider loads and caches side cutout edge metadata', () async {
+      final channel = MethodChannel('dynamic_notifications/android_geometry');
+      final provider = AndroidCutoutGeometryProvider(channel: channel);
+
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'getCutoutGeometry') {
+          return {
+            'hasCutout': true,
+            'edge': 'left',
+            'boundLeft': 30.0,
+            'boundTop': 380.0,
+            'boundRight': 90.0,
+            'boundBottom': 440.0,
+            'boundWidth': 60.0,
+            'boundHeight': 60.0,
+          };
+        }
+        return null;
+      });
+
+      const mediaQuery = MediaQueryData(
+        size: Size(892, 412),
+        viewPadding: EdgeInsets.only(left: 48),
+        devicePixelRatio: 2.0,
+      );
+
+      final geo = await provider.load(mediaQuery: mediaQuery);
+      expect(geo, isNotNull);
+      expect(geo!.hasCutout, isTrue);
+      expect(geo.edge, CutoutEdge.left);
+      expect(geo.bounds, const Rect.fromLTWH(15.0, 190.0, 30.0, 30.0));
+      expect(geo.anchorPoint, const Offset(44.0, 205.0));
+      expect(geo.emergenceDirection, const Offset(1.0, 0.0));
+
+      provider.clear();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+
+    test('AndroidCutoutGeometryProvider handles bottom edge as safe fallback', () async {
+      final channel = MethodChannel('dynamic_notifications/android_geometry');
+      final provider = AndroidCutoutGeometryProvider(channel: channel);
+
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'getCutoutGeometry') {
+          return {
+            'hasCutout': true,
+            'edge': 'bottom',
+            'boundLeft': 180.0,
+            'boundTop': 840.0,
+            'boundRight': 232.0,
+            'boundBottom': 892.0,
+          };
+        }
+        return null;
+      });
+
+      const mediaQuery = MediaQueryData(
+        size: Size(412, 892),
+        viewPadding: EdgeInsets.only(bottom: 48),
+        devicePixelRatio: 2.0,
+      );
+
+      final geo = await provider.load(mediaQuery: mediaQuery);
+      expect(geo, isNotNull);
+      expect(geo!.hasCutout, isFalse);
+      expect(geo.edge, CutoutEdge.none);
+
+      provider.clear();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+
+    test('detects left-side cutout in landscape even with active top status bar insets', () {
+      // Modern Android device in landscape mode with both a 24dp top status bar and a 48dp left cutout inset:
+      // The camera punch hole is at x: 10..34, y: 16..40.
+      const landscapeWithStatusBar = MediaQueryData(
+        size: Size(892, 412),
+        viewPadding: EdgeInsets.only(top: 24, left: 48),
+        displayFeatures: [
+          DisplayFeature(
+            bounds: Rect.fromLTWH(10, 16, 24, 24),
+            type: DisplayFeatureType.cutout,
+            state: DisplayFeatureState.unknown,
+          ),
+        ],
+      );
+
+      final geo = NotchGeometryDetector.fromMediaQuery(
+        mediaQuery: landscapeWithStatusBar,
+        platform: TargetPlatform.android,
+      );
+
+      expect(geo.hasCutout, isTrue);
+      expect(geo.edge, CutoutEdge.left);
+      expect(geo.anchorPoint, const Offset(33.0, 28.0));
+      expect(geo.emergenceDirection, const Offset(1.0, 0.0));
+    });
+
+    test('AndroidCutoutGeometryProvider rejects cross-screen multi-cutout path and uses edge-specific bounding rect', () async {
+      final channel = MethodChannel('dynamic_notifications/android_geometry');
+      final provider = AndroidCutoutGeometryProvider(channel: channel);
+
+      // Simulates an API 31+ multi-cutout device (e.g. top cutout at y=0..80 and bottom cutout at y=2320..2400)
+      // where native getCutoutPath() returns bounds covering the entire screen [0, 0, 1080, 2400],
+      // while getBoundingRectTop() isolates the actual top cutout [490, 0, 590, 80].
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'getCutoutGeometry') {
+          return {
+            'hasCutout': true,
+            'edge': 'top',
+            'hasPath': true,
+            'pathLeft': 0.0,
+            'pathTop': 0.0,
+            'pathRight': 1080.0,
+            'pathBottom': 2400.0,
+            'pathWidth': 1080.0,
+            'pathHeight': 2400.0,
+            'boundLeft': 490.0,
+            'boundTop': 0.0,
+            'boundRight': 590.0,
+            'boundBottom': 80.0,
+            'boundWidth': 100.0,
+            'boundHeight': 80.0,
+          };
+        }
+        return null;
+      });
+
+      const mediaQuery = MediaQueryData(
+        size: Size(412, 892),
+        viewPadding: EdgeInsets.only(top: 48),
+        devicePixelRatio: 2.0,
+      );
+
+      final geo = await provider.load(mediaQuery: mediaQuery);
+      expect(geo, isNotNull);
+      expect(geo!.hasCutout, isTrue);
+      expect(geo.edge, CutoutEdge.top);
+      // The cross-screen path bounds (0..1080) were rejected; edge-specific bounds [245, 0, 295, 40] were preserved!
+      expect(geo.bounds, const Rect.fromLTWH(245.0, 0.0, 50.0, 40.0));
+      expect(geo.source, NotchGeometrySource.displayFeature);
+
+      provider.clear();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
   });
 }

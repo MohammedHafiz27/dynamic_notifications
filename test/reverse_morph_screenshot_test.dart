@@ -298,4 +298,287 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
   });
+
+  testWidgets('Capture visual evidence for horizontal left-side cutout liquid morph', (
+    tester,
+  ) async {
+    const testSize = Size(892, 412);
+    tester.view.physicalSize = const Size(1784, 824);
+    tester.view.devicePixelRatio = 2.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final outDir = Directory('doc/screenshots/morph');
+    if (!outDir.existsSync()) {
+      outDir.createSync(recursive: true);
+    }
+
+    Future<void> saveScreenshot(GlobalKey repaintKey, String filename) async {
+      final boundary =
+          repaintKey.currentContext!.findRenderObject()!
+              as RenderRepaintBoundary;
+      final ui.Image image = await tester.runAsync(
+        () => boundary.toImage(pixelRatio: 2.0),
+      ) as ui.Image;
+      final byteData = await tester.runAsync(
+        () => image.toByteData(format: ui.ImageByteFormat.png),
+      );
+      final file = File('doc/screenshots/morph/$filename');
+      file.writeAsBytesSync(byteData!.buffer.asUint8List());
+    }
+
+    final repaintKey = GlobalKey();
+    final controller = DynamicNotificationController();
+
+    const leftGeometry = NotchGeometry(
+      bounds: Rect.fromLTWH(12, 194, 24, 24),
+      center: Offset(24, 206),
+      width: 24,
+      height: 24,
+      top: 194,
+      bottom: 218,
+      screenSize: testSize,
+      insets: EdgeInsets.only(left: 48),
+      source: NotchGeometrySource.displayFeature,
+      confidence: NotchGeometryConfidence.exact,
+      shape: NotchShape.punchHole,
+      hasCutout: true,
+      edge: CutoutEdge.left,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(
+          backgroundColor: const Color(0xFFF1F5F9),
+          body: RepaintBoundary(
+            key: repaintKey,
+            child: MediaQuery(
+              data: const MediaQueryData(
+                size: testSize,
+                viewPadding: EdgeInsets.only(left: 48),
+                displayFeatures: [
+                  DisplayFeature(
+                    bounds: Rect.fromLTWH(12, 194, 24, 24),
+                    type: DisplayFeatureType.cutout,
+                    state: DisplayFeatureState.unknown,
+                  ),
+                ],
+              ),
+              child: SizedBox(
+                width: testSize.width,
+                height: testSize.height,
+                child: DynamicNotifications(
+                  controller: controller,
+                  geometryOverride: leftGeometry,
+                  child: Stack(
+                    children: [
+                      // Simulated phone side bezel & camera lens
+                      Positioned(
+                        top: 194,
+                        left: 12,
+                        child: Container(
+                          width: 24,
+                          height: 24,
+                          decoration: const BoxDecoration(
+                            color: Colors.black,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        top: 14,
+                        left: 56,
+                        child: Text(
+                          '9:41 AM - Landscape',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black.withValues(alpha: 0.8),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    controller.show(
+      const DynamicNotification(
+        title: 'Package Delivered',
+        message: 'Your order was placed at front door',
+        duration: null,
+      ),
+    );
+
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    // 1. Progress 0.0 - Fully Expanded Resting Card (Centered horizontally, upright)
+    await saveScreenshot(repaintKey, 'side_left_0_expanded.png');
+
+    // 2. Progress 0.25 - Leftward drag -20dp
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('Package Delivered')),
+    );
+    await gesture.moveBy(const Offset(-20, 0));
+    await tester.pump();
+    await saveScreenshot(repaintKey, 'side_left_25_contracting.png');
+
+    // 3. Progress 0.50 - Leftward drag -40dp (horizontal airborne droplet migrating to left cutout)
+    await gesture.moveBy(const Offset(-20, 0));
+    await tester.pump();
+    await saveScreenshot(repaintKey, 'side_left_50_droplet.png');
+
+    // 4. Progress 0.75 - Leftward drag -60dp (neck attaches to left cutout)
+    await gesture.moveBy(const Offset(-20, 0));
+    await tester.pump();
+    await saveScreenshot(repaintKey, 'side_left_75_neck.png');
+
+    // 5. Progress 1.00 - Leftward drag -80dp (absorbed into left camera cutout)
+    await gesture.moveBy(const Offset(-20, 0));
+    await tester.pump();
+    await saveScreenshot(repaintKey, 'side_left_100_absorbed.png');
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('Capture visual evidence for horizontal right-side cutout liquid morph', (
+    tester,
+  ) async {
+    const testSize = Size(892, 412);
+    tester.view.physicalSize = const Size(1784, 824);
+    tester.view.devicePixelRatio = 2.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    Future<void> saveScreenshot(GlobalKey repaintKey, String filename) async {
+      final boundary =
+          repaintKey.currentContext!.findRenderObject()!
+              as RenderRepaintBoundary;
+      final ui.Image image = await tester.runAsync(
+        () => boundary.toImage(pixelRatio: 2.0),
+      ) as ui.Image;
+      final byteData = await tester.runAsync(
+        () => image.toByteData(format: ui.ImageByteFormat.png),
+      );
+      final file = File('doc/screenshots/morph/$filename');
+      file.writeAsBytesSync(byteData!.buffer.asUint8List());
+    }
+
+    final repaintKey = GlobalKey();
+    final controller = DynamicNotificationController();
+
+    const rightGeometry = NotchGeometry(
+      bounds: Rect.fromLTWH(856, 194, 24, 24),
+      center: Offset(868, 206),
+      width: 24,
+      height: 24,
+      top: 194,
+      bottom: 218,
+      screenSize: testSize,
+      insets: EdgeInsets.only(right: 48),
+      source: NotchGeometrySource.displayFeature,
+      confidence: NotchGeometryConfidence.exact,
+      shape: NotchShape.punchHole,
+      hasCutout: true,
+      edge: CutoutEdge.right,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(
+          backgroundColor: const Color(0xFFF1F5F9),
+          body: RepaintBoundary(
+            key: repaintKey,
+            child: MediaQuery(
+              data: const MediaQueryData(
+                size: testSize,
+                viewPadding: EdgeInsets.only(right: 48),
+                displayFeatures: [
+                  DisplayFeature(
+                    bounds: Rect.fromLTWH(856, 194, 24, 24),
+                    type: DisplayFeatureType.cutout,
+                    state: DisplayFeatureState.unknown,
+                  ),
+                ],
+              ),
+              child: SizedBox(
+                width: testSize.width,
+                height: testSize.height,
+                child: DynamicNotifications(
+                  controller: controller,
+                  geometryOverride: rightGeometry,
+                  child: Stack(
+                    children: [
+                      // Simulated phone right bezel & camera lens
+                      Positioned(
+                        top: 194,
+                        right: 12,
+                        child: Container(
+                          width: 24,
+                          height: 24,
+                          decoration: const BoxDecoration(
+                            color: Colors.black,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    controller.show(
+      const DynamicNotification(
+        title: 'Meeting in 5 min',
+        message: 'Product Review sync',
+        duration: null,
+      ),
+    );
+
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    // 1. Progress 0.0 - Fully Expanded
+    await saveScreenshot(repaintKey, 'side_right_0_expanded.png');
+
+    // 2. Progress 0.25 - Rightward drag +20dp
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('Meeting in 5 min')),
+    );
+    await gesture.moveBy(const Offset(20, 0));
+    await tester.pump();
+    await saveScreenshot(repaintKey, 'side_right_25_contracting.png');
+
+    // 3. Progress 0.50 - Rightward drag +40dp
+    await gesture.moveBy(const Offset(20, 0));
+    await tester.pump();
+    await saveScreenshot(repaintKey, 'side_right_50_droplet.png');
+
+    // 4. Progress 0.75 - Rightward drag +60dp (neck attached to right cutout)
+    await gesture.moveBy(const Offset(20, 0));
+    await tester.pump();
+    await saveScreenshot(repaintKey, 'side_right_75_neck.png');
+
+    // 5. Progress 1.00 - Rightward drag +80dp (absorbed into right cutout)
+    await gesture.moveBy(const Offset(20, 0));
+    await tester.pump();
+    await saveScreenshot(repaintKey, 'side_right_100_absorbed.png');
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+  });
 }
