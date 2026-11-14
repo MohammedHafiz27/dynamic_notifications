@@ -1,0 +1,27 @@
+name: dynamic_notifications
+description: Customizable in-app notifications for Flutter with a falling-drop animation, safe-area positioning, and swipe dismissal.
+version: 0.1.0
+repository: https://github.com/MohammedHafiz27/dynamic_notifications
+
+platforms:
+  android:
+  ios:
+
+screenshots:
+  - description: A timed message notification in the Flutter example.
+    path: doc/screenshots/default-card.png
+  - description: A persistent card with a custom upload progress indicator.
+    path: doc/screenshots/custom-card.png
+
+environment:
+  sdk: ^3.13.2
+  flutter: '>=3.47.2'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
