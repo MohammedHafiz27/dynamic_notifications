@@ -184,6 +184,7 @@ No native configuration or Podfile changes are required. Geometry detection on i
 | `accent` | `Color?` | `null` | Accent color applied to the leading icon. |
 | `duration` | `Duration?` | `Duration(seconds: 2)` | Display time before auto-dismissal (`null` for persistent card). |
 | `onOpen` | `VoidCallback?` | `null` | Called when the user taps the card or swipes it down past the open threshold. |
+| `onClosed` | `VoidCallback?` | `null` | Called when the notification card has finished its exit animation and is fully closed. |
 | `contentBuilder` | `WidgetBuilder?` | `null` | Custom widget layout replacing the built-in card row. |
 | `style` | `DynamicNotificationStyle` | `const DynamicNotificationStyle()` | Appearance overrides (background color, border radius, padding). |
 

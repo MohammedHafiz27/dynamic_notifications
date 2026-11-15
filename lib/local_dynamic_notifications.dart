@@ -27,6 +27,7 @@ class DynamicNotification {
     this.avatar,
     this.accent,
     this.onOpen,
+    this.onClosed,
     this.contentBuilder,
     this.style = const DynamicNotificationStyle(),
     this.duration = const Duration(seconds: 2),
@@ -40,6 +41,9 @@ class DynamicNotification {
 
   /// Called when the user taps the card or swipes it down past the open threshold.
   final VoidCallback? onOpen;
+
+  /// Called when the notification card has finished its exit animation and is fully closed.
+  final VoidCallback? onClosed;
 
   /// Replaces the default row. The host provides the animated card and gestures.
   /// [title] and [message] still supply the card's accessibility announcement.
@@ -487,6 +491,7 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
   }
 
   void _finishExit() {
+    final closedNotification = _current;
     final next = _pending;
     _pending = null;
     _timer?.cancel();
@@ -510,6 +515,8 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
     _pointerDownTime = null;
     _pointerDownPosition = null;
     _pointerMoved = false;
+
+    closedNotification?.onClosed?.call();
 
     if (next != null) {
       _startEntrance(next);

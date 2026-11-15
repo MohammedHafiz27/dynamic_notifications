@@ -4407,4 +4407,130 @@ void main() {
       },
     );
   });
+
+  group('DynamicNotification.onClosed callback', () {
+    testWidgets(
+      'onClosed fires when notification dismisses via auto-dismiss timer',
+      (tester) async {
+        await mount(tester);
+        var closedCount = 0;
+        controller.show(
+          DynamicNotification(
+            title: 'Auto Dismiss Close',
+            duration: const Duration(milliseconds: 200),
+            onClosed: () => closedCount++,
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(closedCount, 0);
+
+        // Advance past auto-dismiss timer and wait for exit animation to finish
+        await tester.pump(const Duration(milliseconds: 200));
+        await tester.pumpAndSettle();
+        expect(closedCount, 1);
+      },
+    );
+
+    testWidgets(
+      'onClosed fires when notification is dismissed programmatically',
+      (tester) async {
+        await mount(tester);
+        var closedCount = 0;
+        controller.show(
+          DynamicNotification(
+            title: 'Programmatic Dismiss Close',
+            duration: null,
+            onClosed: () => closedCount++,
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(closedCount, 0);
+
+        controller.dismiss();
+        await tester.pumpAndSettle();
+        expect(closedCount, 1);
+      },
+    );
+
+    testWidgets(
+      'onClosed fires when notification is dismissed via upward swipe',
+      (tester) async {
+        await mount(tester);
+        var closedCount = 0;
+        controller.show(
+          DynamicNotification(
+            title: 'Swipe Dismiss Close',
+            duration: null,
+            onClosed: () => closedCount++,
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(closedCount, 0);
+
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.text('Swipe Dismiss Close')),
+        );
+        await gesture.moveBy(const Offset(0, -70));
+        await tester.pump();
+        await gesture.up();
+        await tester.pumpAndSettle();
+        expect(closedCount, 1);
+      },
+    );
+
+    testWidgets('onClosed fires after onOpen action completes exit', (
+      tester,
+    ) async {
+      await mount(tester);
+      var openCount = 0;
+      var closedCount = 0;
+      controller.show(
+        DynamicNotification(
+          title: 'Open Then Close',
+          duration: null,
+          onOpen: () => openCount++,
+          onClosed: () => closedCount++,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(openCount, 0);
+      expect(closedCount, 0);
+
+      // Tap card
+      await tester.tap(find.text('Open Then Close'));
+      await tester.pump();
+      expect(openCount, 1);
+      expect(closedCount, 0); // Not closed yet, animating exit
+
+      await tester.pumpAndSettle();
+      expect(closedCount, 1);
+    });
+
+    testWidgets(
+      'onClosed does not fire if notification springs back without dismissal',
+      (tester) async {
+        await mount(tester);
+        var closedCount = 0;
+        controller.show(
+          DynamicNotification(
+            title: 'Spring Back No Close',
+            duration: null,
+            onClosed: () => closedCount++,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.text('Spring Back No Close')),
+        );
+        await gesture.moveBy(const Offset(0, -15));
+        await tester.pump();
+        await gesture.up();
+        await tester.pumpAndSettle();
+
+        expect(closedCount, 0);
+        expect(find.text('Spring Back No Close'), findsOneWidget);
+      },
+    );
+  });
 }

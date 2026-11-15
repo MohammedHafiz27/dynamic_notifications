@@ -4,7 +4,7 @@
 - Public API surface:
   - `DynamicNotifications`: Root overlay widget coordinating fluid notification morphing with `originLift`, `geometryOverride`, and `gestureConfig`.
   - `DynamicNotificationController`: Programmatic controller for displaying, queueing, and dismissing notifications, with observable `interactionState` and `stateNotifier`.
-  - `DynamicNotification`: Content model supporting title, message, leading/trailing widgets, duration overrides, `onOpen` callback, and custom layout via `contentBuilder`.
+  - `DynamicNotification`: Content model supporting title, message, leading/trailing widgets, duration overrides, `onOpen` and `onClosed` callbacks, and custom layout via `contentBuilder`.
   - `DynamicNotificationStyle`: Visual styling including surface colors, corner radius, padding, elevation, and shadows.
   - `NotificationGestureConfig`: Interactive physics configuration for vertical drag scrubbing, fling dismissal, and return spring curves.
   - `NotchGeometry` & `NotchGeometryDetector`: Automatic hardware cutout detection across iOS Dynamic Island, top notches, and Android punch holes.
