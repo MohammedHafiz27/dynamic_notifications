@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:math' as math;
 
-import 'package:dynamic_notifications/dynamic_notifications.dart';
+import 'package:local_dynamic_notifications/local_dynamic_notifications.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -139,7 +139,7 @@ class _DemoAppState extends State<DemoApp> {
     final stopwatch = Stopwatch()..start();
     try {
       final res = await const MethodChannel(
-        'dynamic_notifications/android_geometry',
+        'local_dynamic_notifications/android_geometry',
       ).invokeMapMethod<String, dynamic>('getCutoutGeometry');
       stopwatch.stop();
       if (!mounted) return;

@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 import 'dart:ui' show DisplayFeature, DisplayFeatureType, DisplayFeatureState;
 
-import 'package:dynamic_notifications/dynamic_notifications.dart';
+import 'package:local_dynamic_notifications/local_dynamic_notifications.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';

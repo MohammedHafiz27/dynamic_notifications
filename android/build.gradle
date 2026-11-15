@@ -1,4 +1,4 @@
-group 'dev.dynamic_notifications'
+group 'dev.local_dynamic_notifications'
 version '1.0-SNAPSHOT'
 
 buildscript {
@@ -12,7 +12,7 @@ apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
 
 android {
-    namespace 'dev.dynamic_notifications'
+    namespace 'dev.local_dynamic_notifications'
     compileSdk 35
 
     defaultConfig {

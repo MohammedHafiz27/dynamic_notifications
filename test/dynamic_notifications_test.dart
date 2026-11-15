@@ -7,7 +7,7 @@ import 'dart:ui'
         DisplayFeatureType,
         SemanticsAction;
 
-import 'package:dynamic_notifications/dynamic_notifications.dart';
+import 'package:local_dynamic_notifications/local_dynamic_notifications.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';

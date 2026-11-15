@@ -1,6 +1,6 @@
 import 'dart:ui' show DisplayFeature, DisplayFeatureState, DisplayFeatureType;
 
-import 'package:dynamic_notifications/dynamic_notifications.dart';
+import 'package:local_dynamic_notifications/local_dynamic_notifications.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -1053,7 +1053,7 @@ void main() {
     test('AndroidCutoutGeometryProvider queries native cutoutPath (API 31+) and constructs NotchGeometry', () async {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(
-            const MethodChannel('dynamic_notifications/android_geometry'),
+            const MethodChannel('local_dynamic_notifications/android_geometry'),
             (call) async {
               if (call.method == 'getCutoutGeometry') {
                 return <String, dynamic>{
@@ -1106,7 +1106,7 @@ void main() {
     test('AndroidCutoutGeometryProvider falls back to boundingRects when cutoutPath is unavailable', () async {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(
-            const MethodChannel('dynamic_notifications/android_geometry'),
+            const MethodChannel('local_dynamic_notifications/android_geometry'),
             (call) async {
               if (call.method == 'getCutoutGeometry') {
                 return <String, dynamic>{
@@ -2054,7 +2054,9 @@ void main() {
     });
 
     test('AndroidCutoutGeometryProvider loads and caches side cutout edge metadata', () async {
-      final channel = MethodChannel('dynamic_notifications/android_geometry');
+      final channel = MethodChannel(
+        'local_dynamic_notifications/android_geometry',
+      );
       final provider = AndroidCutoutGeometryProvider(channel: channel);
 
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -2095,7 +2097,9 @@ void main() {
     test(
       'AndroidCutoutGeometryProvider handles bottom edge as safe fallback',
       () async {
-        final channel = MethodChannel('dynamic_notifications/android_geometry');
+        final channel = MethodChannel(
+          'local_dynamic_notifications/android_geometry',
+        );
         final provider = AndroidCutoutGeometryProvider(channel: channel);
 
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -2156,7 +2160,9 @@ void main() {
     });
 
     test('AndroidCutoutGeometryProvider rejects cross-screen multi-cutout path and uses edge-specific bounding rect', () async {
-      final channel = MethodChannel('dynamic_notifications/android_geometry');
+      final channel = MethodChannel(
+        'local_dynamic_notifications/android_geometry',
+      );
       final provider = AndroidCutoutGeometryProvider(channel: channel);
 
       // Simulates an API 31+ multi-cutout device (e.g. top cutout at y=0..80 and bottom cutout at y=2320..2400)

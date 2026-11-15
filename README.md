@@ -1,8 +1,8 @@
-# Dynamic Notifications
+# Local Dynamic Notifications
 
 Fluid, cutout-aware in-app notifications for Flutter on iOS and Android. Notifications emerge directly from your device's physical camera aperture or Dynamic Island via curve-driven fluid morphing, blossom into rounded notification cards, and retract back into the aperture upon dismissal.
 
-[![pub package](https://img.shields.io/pub/v/dynamic_notifications.svg)](https://pub.dev/packages/dynamic_notifications)
+[![pub package](https://img.shields.io/pub/v/local_dynamic_notifications.svg)](https://pub.dev/packages/local_dynamic_notifications)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Flutter](https://img.shields.io/badge/Flutter-%3E%3D3.47.2-02569B.svg?logo=flutter)](https://flutter.dev)
 [![Dart](https://img.shields.io/badge/Dart-%3E%3D3.13.2-0175C2.svg?logo=dart)](https://dart.dev)
@@ -15,7 +15,7 @@ Fluid, cutout-aware in-app notifications for Flutter on iOS and Android. Notific
 
 ## Visual Demonstration
 
-Unlike system-tray notifications that post to the OS notification center or lock screen, `dynamic_notifications` renders an in-app overlay directly inside your Flutter widget tree. Notifications emerge dynamically from the hardware camera cutout or Dynamic Island, support interactive vertical gestures, and reverse-morph back into the cutout on dismissal.
+Unlike system-tray notifications that post to the OS notification center or lock screen, `local_dynamic_notifications` renders an in-app overlay directly inside your Flutter widget tree. Notifications emerge dynamically from the hardware camera cutout or Dynamic Island, support interactive vertical gestures, and reverse-morph back into the cutout on dismissal.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/MohammedHafiz27/dynamic_notifications/main/docs/assets/ios-demo.gif" width="340" alt="iOS Dynamic Island Notification Demo">
@@ -40,7 +40,7 @@ Unlike system-tray notifications that post to the OS notification center or lock
 ## Installation
 
 ```sh
-flutter pub add dynamic_notifications
+flutter pub add local_dynamic_notifications
 ```
 
 ---
@@ -50,7 +50,7 @@ flutter pub add dynamic_notifications
 Wrap your app in `DynamicNotifications` in `MaterialApp.builder` (outside the navigator) and call `notifications.show()`:
 
 ```dart
-import 'package:dynamic_notifications/dynamic_notifications.dart';
+import 'package:local_dynamic_notifications/local_dynamic_notifications.dart';
 import 'package:flutter/material.dart';
 
 final notifications = DynamicNotificationController();
@@ -213,7 +213,7 @@ Resolves geometry from context (`detect(context)`) or metrics (`fromMediaQuery(.
 
 ### `AndroidCutoutGeometryProvider`
 
-Singleton platform channel client (`instance`) querying native Android `DisplayCutout` coordinates over `MethodChannel('dynamic_notifications/android_geometry')`.
+Singleton platform channel client (`instance`) querying native Android `DisplayCutout` coordinates over `MethodChannel('local_dynamic_notifications/android_geometry')`.
 
 ---
 

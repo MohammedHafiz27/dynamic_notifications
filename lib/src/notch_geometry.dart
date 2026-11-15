@@ -690,7 +690,7 @@ class NotchGeometryDetector {
 class AndroidCutoutGeometryProvider {
   AndroidCutoutGeometryProvider({
     this.channel = const MethodChannel(
-      'dynamic_notifications/android_geometry',
+      'local_dynamic_notifications/android_geometry',
     ),
   });
 

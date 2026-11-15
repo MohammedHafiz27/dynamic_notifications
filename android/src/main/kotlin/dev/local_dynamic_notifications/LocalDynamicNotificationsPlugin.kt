@@ -1,4 +1,4 @@
-package dev.dynamic_notifications
+package dev.local_dynamic_notifications
 
 import android.app.Activity
 import android.graphics.RectF
@@ -18,13 +18,13 @@ import io.flutter.plugin.common.MethodChannel.Result
  * Flutter plugin providing cached and real-time Android DisplayCutout geometry
  * (including DisplayCutout.getCutoutPath on Android 12+ / API 31+).
  */
-class DynamicNotificationsPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
+class LocalDynamicNotificationsPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
     private var channel: MethodChannel? = null
     private var activity: Activity? = null
     private var cachedGeometry: Map<String, Any?>? = null
 
     companion object {
-        const val CHANNEL_NAME = "dynamic_notifications/android_geometry"
+        const val CHANNEL_NAME = "local_dynamic_notifications/android_geometry"
     }
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {

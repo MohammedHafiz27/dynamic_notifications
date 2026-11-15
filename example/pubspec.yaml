@@ -9,7 +9,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  dynamic_notifications:
+  local_dynamic_notifications:
     path: ..
 
 dev_dependencies:
