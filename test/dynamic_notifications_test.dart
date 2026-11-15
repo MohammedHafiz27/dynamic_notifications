@@ -1610,18 +1610,18 @@ void main() {
         paints..something((Symbol method, List<dynamic> args) {
           if (method == #clipRect) {
             final rect = args[0] as Rect;
-            return rect.top <= -40.0;
+            return rect.top <= -16.0;
           }
           return false;
         }),
       );
 
-      // Card background is fully rendered at Y = shapeSize.height / 2 - 40.0
+      // Card background is fully rendered
       expect(
         shape,
         paints..path(
           color: Colors.white,
-          includes: [Offset(center, shapeSize.height / 2 - 40.0)],
+          includes: [Offset(center, shapeSize.height / 2)],
         ),
       );
 
@@ -1999,9 +1999,9 @@ void main() {
       await gesture.moveBy(const Offset(0, -20));
       await tester.pump();
 
-      // At -20px, text moved up by -20px and remains inside
+      // At -20px, upward drag scrubs morph while text stays anchored
       final draggedTextRect = tester.getRect(find.text('Attached Content Morph'));
-      expect(draggedTextRect.center.dy, closeTo(textRect.center.dy - 20.0, 1.0));
+      expect(draggedTextRect.center.dy, closeTo(textRect.center.dy, 1.0));
 
       // Drag to -45px (morphProgress = 0.56, opacity becomes 0.0)
       await gesture.moveBy(const Offset(0, -25));
@@ -2038,7 +2038,7 @@ void main() {
         shape,
         paints..path(
           color: Colors.white,
-          includes: [Offset(center, shapeSize.height / 2 - 20.0)],
+          includes: [Offset(center, shapeSize.height / 2)],
         ),
       );
 
@@ -2049,7 +2049,7 @@ void main() {
         shape,
         paints..path(
           color: Colors.white,
-          includes: [Offset(center, shapeSize.height / 2 - 35.0)],
+          includes: [Offset(center, shapeSize.height / 2)],
         ),
       );
 

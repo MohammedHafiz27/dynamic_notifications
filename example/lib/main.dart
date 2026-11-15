@@ -68,6 +68,21 @@ class _DemoAppState extends State<DemoApp> {
   Map<String, dynamic>? _nativeData;
   int? _benchmarkLatencyUs;
 
+  @override
+  void initState() {
+    super.initState();
+    if (const bool.fromEnvironment('SHOWCASE', defaultValue: false)) {
+      Future.delayed(const Duration(milliseconds: 1800), () {
+        if (!mounted) return;
+        _showMessage();
+      });
+      Future.delayed(const Duration(milliseconds: 6800), () {
+        if (!mounted) return;
+        _notifications.dismiss();
+      });
+    }
+  }
+
   void _showMessage() => _notifications.show(
     DynamicNotification(
       title: 'New message',
