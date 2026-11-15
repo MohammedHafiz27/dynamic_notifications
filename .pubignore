@@ -1,0 +1,26 @@
+# Ignore build and tool artifacts
+.dart_tool/
+.idea/
+.flutter-plugins-dependencies
+build/
+coverage/
+*.iml
+
+# Ignore example builds
+example/build/
+example/.dart_tool/
+example/android/.gradle/
+example/android/local.properties
+example/ios/Flutter/Generated.xcconfig
+example/ios/Flutter/flutter_export_environment.sh
+example/ios/Flutter/ephemeral/
+example/ios/.symlinks/
+
+# Exclude internal docs, plans, demo videos, and test baseline captures from package archive
+docs/
+doc/demo/
+doc/screenshots/baseline/
+doc/screenshots/drag/
+doc/screenshots/island/
+doc/screenshots/morph/
+doc/screenshots/transition_comparison/

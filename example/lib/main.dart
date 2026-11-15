@@ -688,8 +688,6 @@ class _GeometryDebugHudState extends State<_GeometryDebugHud> {
 
                       const Divider(color: Colors.white24, height: 16),
 
-                      // A/B Renderer Selection
-
                       // Control buttons
                       Row(
                         children: [
