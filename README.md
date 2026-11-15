@@ -268,7 +268,7 @@ notifications.show(
 1. **Devices Without Cutouts**: On displays without physical cutouts, notifications gracefully fall back to the top safe area status bar insets with centered emergence.
 2. **Single Pending Notification ("Latest Wins")**: The host maintains a single pending slot. If `controller.show()` is called while a notification is active or exiting, the new notification replaces any previous pending notification and enters once the active exit finishes.
 3. **Controller Attachment & Mount Placement**: Always install `DynamicNotifications` once in `MaterialApp.builder` outside the `Navigator` so notifications overlay all routes. A single `DynamicNotificationController` can only be attached to one mounted host at a time; attaching it to a second host throws a `StateError` (*"A controller can only be attached to one host."*).
-4. **Asynchronous Android Geometry**: On Android, `AndroidCutoutGeometryProvider.instance.load()` is invoked asynchronously upon initial mount. The first frame may use `MediaQuery` fallback metrics until the native platform channel completes, whereupon the host updates with exact native cutout bounds.
+4. **Asynchronous Android Geometry**: On Android, `AndroidCutoutGeometryProvider.instance.load()` is invoked asynchronously once on first dependency resolution. The first frame may use `MediaQuery` fallback metrics until the native platform channel completes, whereupon the host updates with exact native cutout bounds.
 
 ---
 
