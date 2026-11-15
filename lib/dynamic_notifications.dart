@@ -245,7 +245,7 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
   int _springGeneration = 0;
   bool _entranceComplete = false;
   double _exitDrag = 0.0;
-  double _exitStartProgress = 1.0;
+  bool _cutoutRequested = false;
   Timer? _timer;
   DateTime? _timerStart;
   Duration? _timerRemaining;
@@ -357,15 +357,14 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
       _animation.value = _exiting ? 0 : 1;
     }
 
-    // Automatically and non-blockingly load native Android cutout geometry if on Android
-    // and no explicit override is provided.
-    if (Theme.of(context).platform == TargetPlatform.android &&
+    if (!_cutoutRequested &&
+        Theme.of(context).platform == TargetPlatform.android &&
         widget.geometryOverride == null) {
-      final mq = MediaQuery.of(context);
-      AndroidCutoutGeometryProvider.instance.load(mediaQuery: mq).then((geo) {
-        if (mounted && geo != null) {
-          setState(() {});
-        }
+      _cutoutRequested = true;
+      AndroidCutoutGeometryProvider.instance
+          .load(mediaQuery: MediaQuery.of(context))
+          .then((geo) {
+        if (mounted && geo != null) setState(() {});
       });
     }
   }
@@ -403,7 +402,6 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
     _dragBaseY = 0.0;
     _drag = 0.0;
     _exitDrag = 0.0;
-    _exitStartProgress = 1.0;
     _exiting = false;
     _entranceComplete = false;
     _interactionState = NotificationInteractionState.idle;
@@ -431,8 +429,7 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
     _timerRemaining = null;
     _springController.stop();
 
-    _exitDrag = _drag;
-    _exitStartProgress = _animation.value > 0.0 ? _animation.value : 1.0;
+    _exitDrag = math.max(0.0, _drag);
 
     setState(() {
       _exiting = true;
@@ -448,7 +445,14 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
       _animation.value = 0.0;
       _finishExit();
     } else {
-      _animation.reverse(from: _animation.value);
+      final ms = (_animation.reverseDuration!.inMilliseconds *
+              _animation.value.clamp(0.55, 1.0))
+          .round();
+      _animation.animateBack(
+        0.0,
+        duration: Duration(milliseconds: ms),
+        curve: Curves.linear,
+      );
     }
   }
 
@@ -513,7 +517,6 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
     _entranceComplete = false;
     _drag = 0.0;
     _exitDrag = 0.0;
-    _exitStartProgress = 1.0;
     _interactionState = NotificationInteractionState.idle;
     _pointerDownTime = null;
     _pointerDownPosition = null;
@@ -915,11 +918,13 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
             if (compact) {
               effectiveDrag = 0.0;
             } else if (_exiting) {
-              effectiveDrag = _exitStartProgress > 0.0
-                  ? _exitDrag * (_animation.value / _exitStartProgress)
-                  : 0.0;
+              // Remaining downward drag (the "opening" case) fades out before progress reaches 0.46
+              final t = ((_animation.value - 0.46) / 0.54).clamp(0.0, 1.0);
+              effectiveDrag =
+                  math.max(0.0, _exitDrag) * Curves.easeOut.transform(t);
             } else {
-              effectiveDrag = _drag;
+              // Upward drag = morph only (_animation is scrubbed), no translation
+              effectiveDrag = math.max(0.0, _drag);
             }
             final offset = Offset(0, effectiveDrag);
             final morphProgress = _morphProgress;
@@ -1107,7 +1112,7 @@ class _NotificationPainter extends CustomPainter {
 
     final width = lerpDouble(dropSize / stretch, size.width, expand)!;
     final height = lerpDouble(dropSize * stretch, cardHeight, expand)!;
-    final centerY = compact
+    final double centerY = compact
         ? cardHeight / 2
         : lerpDouble(-12, landing + cardHeight / 2, fall)! + drag;
     final centerX = size.width / 2 + anchorOffset * (1.0 - expand);
@@ -1123,6 +1128,22 @@ class _NotificationPainter extends CustomPainter {
       width: width,
       height: height,
     );
+
+    final double detachmentExtent;
+    final double minTip;
+    if (drag == 0.0) {
+      detachmentExtent = math.max(0.0, rect.bottom - yApex);
+      minTip = math.min(22.0, detachmentExtent);
+    } else {
+      final maxDetachment = math.max(0.0, landing + cardHeight - yApex);
+      final minNeck = math.min(78.0, maxDetachment);
+      final baseDetachment = math.max(
+        rect.bottom - drag - yApex,
+        minNeck,
+      );
+      detachmentExtent = math.max(0.0, baseDetachment + drag);
+      minTip = 0.0;
+    }
 
     final topFlat = math.max(0.0, width / 2 - corner);
     final botFlat = math.max(0.0, width / 2 - corner);
@@ -1190,19 +1211,6 @@ class _NotificationPainter extends CustomPainter {
       yContact = math.max(-anchorTop, yContact);
 
       // Droplet vertical extent
-      final double detachmentExtent;
-      final double minTip = 0.0;
-      if (drag == 0.0) {
-        detachmentExtent = math.max(0.0, rect.bottom - yApex);
-      } else {
-        final maxDetachment = math.max(0.0, landing + cardHeight - yApex);
-        final minNeck = math.min(78.0, maxDetachment);
-        final baseDetachment = math.max(
-          rect.bottom - drag - yApex,
-          minNeck,
-        );
-        detachmentExtent = math.max(0.0, baseDetachment + drag);
-      }
       final yBottom =
           yApex +
           lerpDouble(
@@ -1213,14 +1221,14 @@ class _NotificationPainter extends CustomPainter {
 
       // Pinch waist: smoothly narrows from wide funnel to pinched waist
       final pinch = math.pow(u, 2.0);
-      final waist = shoulder * (0.45 - 0.28 * pinch);
+      final waist = shoulder * 0.45 * (1.0 - pinch);
       final waistY =
           yContact + (yBottom - yContact) * lerpDouble(0.48, 0.36, u)!;
 
       // Bulb width: rounded bulb forming at the bottom
       final wBulb =
           lerpDouble(
-            math.min(shoulder * 0.45, 6.0),
+            10.0,
             math.max(width / 2, 24.5),
             Curves.easeInOutCubic.transform(u),
           )!;
@@ -1332,6 +1340,22 @@ class _NotificationPainter extends CustomPainter {
         yContact,
       );
       path.close();
+
+      if (surface != Colors.black) {
+        paint.shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.black,
+            Color.lerp(Colors.black, surface, 0.35)!,
+            Color.lerp(Colors.black, surface, 0.85)!,
+            surface,
+          ],
+          stops: const [0.0, 0.30, 0.70, 1.0],
+        ).createShader(
+          Rect.fromLTRB(0, yContact, 1, math.max(yBottom, yContact + 1.0)),
+        );
+      }
     } else {
       final bulbY = rect.top + height * (0.50 + 0.14 * effectiveEgg);
       final wBulb = width / 2;
@@ -1383,13 +1407,32 @@ class _NotificationPainter extends CustomPainter {
         final kYTop = lerpDouble(0.0, 0.35, effectiveEgg)!;
         final kYBulb = lerpDouble(0.5523, 0.40, effectiveEgg)!;
 
+        final fallAtDetachment = _fall.transform(0.28);
+        final centerYAtDetachment = compact
+            ? cardHeight / 2
+            : lerpDouble(-12, landing + cardHeight / 2, fallAtDetachment)! + drag;
+        const stretchAtDetachment = 1.0 + 0.38 * 1.0; // _stretch.transform(0.28) == 1.0 (pi/2)
+        final dropSizeAtDetachment =
+            math.min(48.0, math.min(size.width, cardHeight)) * (compact ? 1.0 : 1.0);
+        final heightAtDetachment = dropSizeAtDetachment * stretchAtDetachment;
+        final rectBottomAtDetachment = centerYAtDetachment + heightAtDetachment / 2;
+        final waistYAtDetachment =
+            yApex + math.max(0.0, rectBottomAtDetachment - yApex) * 0.36;
+
+        final tDrop = ((progress - 0.28) / (0.44 - 0.28)).clamp(0.0, 1.0);
+        final dropTop = lerpDouble(
+          waistYAtDetachment,
+          rect.top,
+          Curves.easeInOut.transform(tDrop),
+        )!;
+
         path
-          ..moveTo(centerX, rect.top)
+          ..moveTo(centerX, dropTop)
           ..cubicTo(
             centerX + wBulb * kX,
-            rect.top + (bulbY - rect.top) * kYTop,
+            dropTop + (bulbY - dropTop) * kYTop,
             centerX + wBulb,
-            bulbY - (bulbY - rect.top) * kYBulb,
+            bulbY - (bulbY - dropTop) * kYBulb,
             centerX + wBulb,
             bulbY,
           )
@@ -1411,27 +1454,42 @@ class _NotificationPainter extends CustomPainter {
           )
           ..cubicTo(
             centerX - wBulb,
-            bulbY - (bulbY - rect.top) * kYBulb,
+            bulbY - (bulbY - dropTop) * kYBulb,
             centerX - wBulb * kX,
-            rect.top + (bulbY - rect.top) * kYTop,
+            dropTop + (bulbY - dropTop) * kYTop,
             centerX,
-            rect.top,
+            dropTop,
           )
           ..close();
       }
 
     }
 
-    // Meniscus tip remaining on the Dynamic Island aperture after detachment during entrance only
+    // Meniscus tip remaining on the Dynamic Island aperture after detachment
     final bool showMeniscus =
-        !compact && !isExiting && drag == 0.0 && isPill && progress > 0.28 && progress <= 0.40;
+        !compact && isPill && progress > 0.28 && progress <= 0.40;
     Path? meniscusPath;
     if (showMeniscus) {
+      final fallAtDetachment = _fall.transform(0.28);
+      final centerYAtDetachment = compact
+          ? cardHeight / 2
+          : lerpDouble(-12, landing + cardHeight / 2, fallAtDetachment)! + drag;
+      const stretchAtDetachment = 1.0 + 0.38 * 1.0;
+      final dropSizeAtDetachment =
+          math.min(48.0, math.min(size.width, cardHeight)) * (compact ? 1.0 : 1.0);
+      final heightAtDetachment = dropSizeAtDetachment * stretchAtDetachment;
+      final rectBottomAtDetachment = centerYAtDetachment + heightAtDetachment / 2;
+      final waistYAtDetachment =
+          yApex + math.max(0.0, rectBottomAtDetachment - yApex) * 0.36;
+
+      final detachmentNeckHeight = math.max(0.0, waistYAtDetachment - yApex);
+      final detachmentShoulder = maxContactRadius * 0.65;
+
       final recoil = ((progress - 0.28) / (0.40 - 0.28)).clamp(0.0, 1.0);
-      final recoilHeight = (1.0 - Curves.easeInCubic.transform(recoil));
-      final recoilWidth = (1.0 - Curves.easeIn.transform(recoil));
-      final mHeight = 3.5 * recoilHeight;
-      final mShoulder = 22.0 * recoilWidth;
+      final recoilHeight = (1.0 - Curves.easeOutCubic.transform(recoil));
+      final recoilWidth = (1.0 - Curves.easeOut.transform(recoil));
+      final mHeight = detachmentNeckHeight * recoilHeight;
+      final mShoulder = detachmentShoulder * recoilWidth;
 
       if (mHeight > 0.2 && mShoulder > 1.0) {
         final mYContact = math.max(-anchorTop, yApex);
@@ -1466,6 +1524,41 @@ class _NotificationPainter extends CustomPainter {
         );
         tailTopY = math.min(tailTopY ?? mYContact, mYContact);
       }
+    }
+
+    if (!isAttached && progress <= 0.40 && surface != Colors.black) {
+      final fallAtDetachment = _fall.transform(0.28);
+      final centerYAtDetachment = compact
+          ? cardHeight / 2
+          : lerpDouble(-12, landing + cardHeight / 2, fallAtDetachment)! + drag;
+      const stretchAtDetachment = 1.0 + 0.38 * 1.0;
+      final dropSizeAtDetachment =
+          math.min(48.0, math.min(size.width, cardHeight)) * (compact ? 1.0 : 1.0);
+      final heightAtDetachment = dropSizeAtDetachment * stretchAtDetachment;
+      final rectBottomAtDetachment = centerYAtDetachment + heightAtDetachment / 2;
+      final waistYAtDetachment =
+          yApex + math.max(0.0, rectBottomAtDetachment - yApex) * 0.36;
+
+      final tDrop = ((progress - 0.28) / (0.44 - 0.28)).clamp(0.0, 1.0);
+      final dropTop = lerpDouble(
+        waistYAtDetachment,
+        rect.top,
+        Curves.easeInOut.transform(tDrop),
+      )!;
+      final tColor = ((progress - 0.28) / (0.40 - 0.28)).clamp(0.0, 1.0);
+      final tipColor = Color.lerp(
+        Color.lerp(Colors.black, surface, 0.45)!,
+        bodyColor,
+        tColor,
+      )!;
+      paint.shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [tipColor, surface],
+        stops: const [0.0, 1.0],
+      ).createShader(
+        Rect.fromLTRB(0, dropTop, 1, math.max(rect.bottom, dropTop + 1.0)),
+      );
     }
 
     final tailPad = (tailLeft != null && tailRight != null)
@@ -1509,7 +1602,7 @@ class _NotificationPainter extends CustomPainter {
     }
     canvas.drawPath(path, paint);
     if (meniscusPath != null) {
-      canvas.drawPath(meniscusPath, Paint()..color = bodyColor);
+      canvas.drawPath(meniscusPath, Paint()..color = Colors.black);
     }
     canvas.restore();
 
