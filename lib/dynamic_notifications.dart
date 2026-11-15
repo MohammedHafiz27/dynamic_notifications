@@ -200,9 +200,8 @@ class DynamicNotifications extends StatefulWidget {
   /// When null, geometry is automatically detected from the platform environment.
   final NotchGeometry? geometryOverride;
 
-  /// Optional manual override for animation progress (between 0.0 and 1.0).
-  /// Used for frame-by-frame visual inspection and screenshot validation.
-  /// Defaults to null (live animation).
+  /// Internal test-only: freezes animation progress for frame inspection.
+  @visibleForTesting
   final double? progressOverride;
 
   /// Configuration for interactive gesture thresholds and physics.

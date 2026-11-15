@@ -62,7 +62,6 @@ class _DemoAppState extends State<DemoApp> {
   bool _debugMode = false;
   bool _useNativeGeometry = false;
   bool _highContrast = false;
-  double? _progressOverride;
   NotchGeometry? _nativeGeometry;
   Map<String, dynamic>? _nativeData;
   int? _benchmarkLatencyUs;
@@ -294,7 +293,6 @@ class _DemoAppState extends State<DemoApp> {
           controller: _notifications,
           originLift: _originLift,
           geometryOverride: _useNativeGeometry ? _nativeGeometry : null,
-          progressOverride: _progressOverride,
           child: Stack(
             children: [
               child!,
@@ -305,10 +303,6 @@ class _DemoAppState extends State<DemoApp> {
                   highContrast: _highContrast,
                   nativeData: _nativeData,
                   latencyUs: _benchmarkLatencyUs,
-                  progressOverride: _progressOverride,
-                  onProgressChanged: (val) {
-                    setState(() => _progressOverride = val);
-                  },
                   onToggleGeometrySource: (useNative) async {
                     if (useNative && _nativeGeometry == null) {
                       await _fetchNativeCutout(context);
@@ -322,7 +316,6 @@ class _DemoAppState extends State<DemoApp> {
                   onTriggerNotification: _showUpload,
                   onClose: () => setState(() {
                     _debugMode = false;
-                    _progressOverride = null;
                   }),
                 ),
             ],
@@ -546,8 +539,6 @@ class _GeometryDebugHud extends StatefulWidget {
     required this.highContrast,
     required this.nativeData,
     required this.latencyUs,
-    required this.progressOverride,
-    required this.onProgressChanged,
     required this.onToggleGeometrySource,
     required this.onToggleHighContrast,
     required this.onRunBenchmark,
@@ -560,8 +551,6 @@ class _GeometryDebugHud extends StatefulWidget {
   final bool highContrast;
   final Map<String, dynamic>? nativeData;
   final int? latencyUs;
-  final double? progressOverride;
-  final ValueChanged<double?> onProgressChanged;
   final ValueChanged<bool> onToggleGeometrySource;
   final ValueChanged<bool> onToggleHighContrast;
   final VoidCallback onRunBenchmark;
@@ -747,58 +736,6 @@ class _GeometryDebugHudState extends State<_GeometryDebugHud> {
                         _metricRow(
                           'Channel Latency',
                           '${widget.latencyUs}µs (${(widget.latencyUs! / 166.66).toStringAsFixed(1)}% of 60Hz frame)',
-                        ),
-
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Text(
-                            widget.progressOverride != null
-                                ? 'Scrub: ${(widget.progressOverride! * 100).round()}%'
-                                : 'Animation: Live',
-                            style: const TextStyle(
-                              color: Color(0xFFFFEA00),
-                              fontSize: 11,
-                              fontFamily: 'monospace',
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const Spacer(),
-                          TextButton(
-                            style: TextButton.styleFrom(
-                              visualDensity: VisualDensity.compact,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                              ),
-                            ),
-                            onPressed: () {
-                              if (widget.progressOverride == null) {
-                                widget.onProgressChanged(0.15);
-                              } else {
-                                widget.onProgressChanged(null);
-                              }
-                            },
-                            child: Text(
-                              widget.progressOverride == null
-                                  ? 'Scrub Frame'
-                                  : 'Live Mode',
-                              style: const TextStyle(
-                                fontSize: 10,
-                                color: Color(0xFF00E5FF),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (widget.progressOverride != null)
-                        Slider(
-                          value: widget.progressOverride!,
-                          min: 0.0,
-                          max: 1.0,
-                          divisions: 20,
-                          activeColor: const Color(0xFFFFEA00),
-                          inactiveColor: Colors.white24,
-                          onChanged: (val) => widget.onProgressChanged(val),
                         ),
 
                       const Divider(color: Colors.white24, height: 16),
