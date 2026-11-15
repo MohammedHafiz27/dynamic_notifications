@@ -1,6 +1,13 @@
 ## 0.1.0
 
-- Add animated in-app notification cards with safe-area placement, gesture dismissal, and reduced-motion support.
-- Default to a two-second display time with per-notification overrides.
-- Support custom card content, background color, corner radius, and padding.
-- Refine the drop, tint, expansion, and return motion, and add optional origin calibration.
+- Initial release of `dynamic_notifications`, an in-app notification overlay emerging organically from display cutouts and safe areas.
+- Public API surface:
+  - `DynamicNotifications`: Root overlay widget coordinating fluid notification morphing with `originLift`, `debugShowGuides`, `geometryOverride`, `progressOverride`, and `gestureConfig`.
+  - `DynamicNotificationController`: Programmatic controller for displaying, queueing, and dismissing notifications, with observable `interactionState` and `stateNotifier`.
+  - `DynamicNotification`: Content model supporting title, message, leading/trailing widgets, duration overrides, and custom layout via `contentBuilder`.
+  - `DynamicNotificationStyle`: Visual styling including surface colors, corner radius, padding, elevation, and shadows.
+  - `NotificationGestureConfig`: Interactive physics configuration for vertical drag scrubbing, fling dismissal, and return spring curves.
+  - `NotchGeometry` & `NotchGeometryDetector`: Automatic hardware cutout detection across iOS Dynamic Island, top notches, and Android punch holes.
+  - `AndroidCutoutGeometryProvider`: Native platform channel integration retrieving exact Android `DisplayCutout` coordinates.
+- Streamlined rendering engine utilizing a unified physics-based pendant drop morphology across all device orientations.
+- Safe-area fallback for notch-free devices and tablets.
