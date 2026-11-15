@@ -2,7 +2,7 @@
 
 - Initial release of `dynamic_notifications`, an in-app notification overlay emerging organically from display cutouts and safe areas.
 - Public API surface:
-  - `DynamicNotifications`: Root overlay widget coordinating fluid notification morphing with `originLift`, `debugShowGuides`, `geometryOverride`, `progressOverride`, and `gestureConfig`.
+  - `DynamicNotifications`: Root overlay widget coordinating fluid notification morphing with `originLift`, `geometryOverride`, and `gestureConfig`.
   - `DynamicNotificationController`: Programmatic controller for displaying, queueing, and dismissing notifications, with observable `interactionState` and `stateNotifier`.
   - `DynamicNotification`: Content model supporting title, message, leading/trailing widgets, duration overrides, and custom layout via `contentBuilder`.
   - `DynamicNotificationStyle`: Visual styling including surface colors, corner radius, padding, elevation, and shadows.

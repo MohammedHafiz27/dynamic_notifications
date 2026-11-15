@@ -137,8 +137,7 @@ No native configuration or Podfile changes are required. Geometry detection on i
 | `child` | `Widget` | *Required* | The underlying widget subtree (typically your navigator from `MaterialApp.builder`). |
 | `originLift` | `double` | `0.0` | Moves the automatic drop origin up by this many logical pixels (must be `>= 0`). |
 | `gestureConfig` | `NotificationGestureConfig` | `const NotificationGestureConfig()` | Thresholds and curves for interactive drag, fling, tap, and spring return. |
-| `geometryOverride` | `NotchGeometry?` | `null` | Manually overrides detected notch geometry (useful for testing or simulator verification). |
-| `progressOverride` | `double?` | `null` | Freezes animation progress between `0.0` (cutout) and `1.0` (card) for inspection. |
+| `geometryOverride` | `NotchGeometry?` | `null` | Overrides the detected cutout geometry. Intended as an escape hatch when detection is wrong on a specific device. |
 
 ### `DynamicNotificationController`
 
@@ -270,48 +269,6 @@ notifications.show(
 2. **Single Pending Notification ("Latest Wins")**: The host maintains a single pending slot. If `controller.show()` is called while a notification is active or exiting, the new notification replaces any previous pending notification and enters once the active exit finishes.
 3. **Controller Attachment & Mount Placement**: Always install `DynamicNotifications` once in `MaterialApp.builder` outside the `Navigator` so notifications overlay all routes. A single `DynamicNotificationController` can only be attached to one mounted host at a time; attaching it to a second host throws a `StateError` (*"A controller can only be attached to one host."*).
 4. **Asynchronous Android Geometry**: On Android, `AndroidCutoutGeometryProvider.instance.load()` is invoked asynchronously upon initial mount. The first frame may use `MediaQuery` fallback metrics until the native platform channel completes, whereupon the host updates with exact native cutout bounds.
-
----
-
-## Debugging & Testing
-
-### Visual Guides & Geometry Override
-
-Enable `debugShowGuides` to display color-coded on-screen guides (cutout bounds in cyan, anchor origin crosshair in red, neck attachment line in yellow, and apex in green). Use `geometryOverride` to simulate specific cutouts during testing:
-
-```dart
-DynamicNotifications(
-  controller: notifications,
-  debugShowGuides: true, // Cyan cutout bounds, red origin, yellow neck, green apex
-  geometryOverride: const NotchGeometry(
-    bounds: Rect.fromLTWH(180, 0, 34, 34),
-    center: Offset(197, 17),
-    width: 34,
-    height: 34,
-    top: 0,
-    bottom: 34,
-    screenSize: Size(393, 852),
-    insets: EdgeInsets.only(top: 47),
-    source: NotchGeometrySource.safeArea,
-    confidence: NotchGeometryConfidence.fallback,
-    shape: NotchShape.punchHole,
-    hasCutout: true,
-  ),
-  child: child!,
-)
-```
-
-### Freezing Animation Progress
-
-Set `progressOverride` (between `0.0` and `1.0`) to freeze the morph animation at a fixed stage for visual seam inspection or screenshot tests. This displays a placeholder "Geometry Validation" card:
-
-```dart
-DynamicNotifications(
-  controller: notifications,
-  progressOverride: 0.45, // Freezes animation at 45% progress and shows validation card
-  child: child!,
-)
-```
 
 ---
 
