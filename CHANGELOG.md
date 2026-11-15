@@ -1,3 +1,10 @@
+## 0.1.1
+
+- Renamed `onTap` callback to `onOpen` on `DynamicNotification`.
+- Added `onClosed` callback invoked when notification finishes exit animation.
+- Improved reverse exit animation mirroring with smooth fluid transitions.
+- Clarified documentation and Android geometry initialization.
+
 ## 0.1.0
 
 - Initial release of `local_dynamic_notifications`, an in-app notification overlay emerging organically from display cutouts and safe areas.

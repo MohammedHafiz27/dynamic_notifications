@@ -1,6 +1,6 @@
 name: local_dynamic_notifications
 description: Customizable in-app notifications for Flutter with a falling-drop animation, safe-area positioning, and swipe dismissal.
-version: 0.1.0
+version: 0.1.1
 repository: https://github.com/MohammedHafiz27/dynamic_notifications
 
 platforms:
