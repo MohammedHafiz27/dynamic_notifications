@@ -4049,4 +4049,362 @@ void main() {
       },
     );
   });
+
+  group('Exit Animation Mirrors Entrance', () {
+    testWidgets(
+      '1. Timer-driven exit: translation stays 0.0 and path geometry mirrors entrance when progress <= 0.46',
+      (tester) async {
+        final entranceBounds = <double, Rect>{};
+        final sampleProgresses = [0.20, 0.35, 0.45];
+
+        for (final p in sampleProgresses) {
+          await tester.pumpWidget(
+            MaterialApp(
+              home: Scaffold(
+                body: MediaQuery(
+                  data: const MediaQueryData(padding: EdgeInsets.only(top: 40)),
+                  child: DynamicNotifications(
+                    controller: DynamicNotificationController(),
+                    progressOverride: p,
+                    child: const SizedBox.expand(),
+                  ),
+                ),
+              ),
+            ),
+          );
+          final shape = find.byKey(
+            const ValueKey('dynamic-notification-shape'),
+          );
+          expect(
+            shape,
+            paints..something((Symbol method, List<dynamic> args) {
+              if (method == #drawPath) {
+                final path = args[0] as Path;
+                entranceBounds[p] = path.getBounds();
+                return true;
+              }
+              return false;
+            }),
+          );
+        }
+
+        await mount(tester, padding: const EdgeInsets.only(top: 40));
+        controller.show(
+          const DynamicNotification(
+            title: 'Geometry Validation',
+            message: 'Visual Seam Inspection',
+            duration: Duration(milliseconds: 500),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Expire the timer to initiate exit animation
+        await tester.pump(const Duration(milliseconds: 500));
+
+        // Sample points during exit reverse duration (640ms total linear playback)
+        // t = 640 * (1 - p):
+        // p = 0.45 -> t = 352ms
+        await tester.pump(const Duration(milliseconds: 352));
+        var customPaint = tester.widget<CustomPaint>(
+          find.byKey(const ValueKey('dynamic-notification-shape')),
+        );
+        expect((customPaint.painter as dynamic).drag, equals(0.0));
+        var transforms = tester.widgetList<Transform>(
+          find.ancestor(
+            of: find.text('Geometry Validation'),
+            matching: find.byType(Transform),
+          ),
+        );
+        for (final t in transforms) {
+          expect(t.transform.getTranslation().y, equals(0.0));
+        }
+        var shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+        expect(
+          shape,
+          paints..something((Symbol method, List<dynamic> args) {
+            if (method == #drawPath) {
+              final path = args[0] as Path;
+              final b = path.getBounds();
+              final eb = entranceBounds[0.45]!;
+              expect(b.left, closeTo(eb.left, 0.05));
+              expect(b.top, closeTo(eb.top, 0.05));
+              expect(b.width, closeTo(eb.width, 0.05));
+              expect(b.height, closeTo(eb.height, 0.05));
+              return true;
+            }
+            return false;
+          }),
+        );
+
+        // p = 0.35 -> elapsed 416ms (delta 64ms from 352ms)
+        await tester.pump(const Duration(milliseconds: 64));
+        customPaint = tester.widget<CustomPaint>(
+          find.byKey(const ValueKey('dynamic-notification-shape')),
+        );
+        expect((customPaint.painter as dynamic).drag, equals(0.0));
+        transforms = tester.widgetList<Transform>(
+          find.ancestor(
+            of: find.text('Geometry Validation'),
+            matching: find.byType(Transform),
+          ),
+        );
+        for (final t in transforms) {
+          expect(t.transform.getTranslation().y, equals(0.0));
+        }
+        shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+        expect(
+          shape,
+          paints..something((Symbol method, List<dynamic> args) {
+            if (method == #drawPath) {
+              final path = args[0] as Path;
+              final b = path.getBounds();
+              final eb = entranceBounds[0.35]!;
+              expect(b.left, closeTo(eb.left, 0.05));
+              expect(b.top, closeTo(eb.top, 0.05));
+              expect(b.width, closeTo(eb.width, 0.05));
+              expect(b.height, closeTo(eb.height, 0.05));
+              return true;
+            }
+            return false;
+          }),
+        );
+
+        // p = 0.20 -> elapsed 512ms (delta 96ms from 416ms)
+        await tester.pump(const Duration(milliseconds: 96));
+        customPaint = tester.widget<CustomPaint>(
+          find.byKey(const ValueKey('dynamic-notification-shape')),
+        );
+        expect((customPaint.painter as dynamic).drag, equals(0.0));
+        transforms = tester.widgetList<Transform>(
+          find.ancestor(
+            of: find.text('Geometry Validation'),
+            matching: find.byType(Transform),
+          ),
+        );
+        for (final t in transforms) {
+          expect(t.transform.getTranslation().y, equals(0.0));
+        }
+        shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+        expect(
+          shape,
+          paints..something((Symbol method, List<dynamic> args) {
+            if (method == #drawPath) {
+              final path = args[0] as Path;
+              final b = path.getBounds();
+              final eb = entranceBounds[0.20]!;
+              expect(b.left, closeTo(eb.left, 0.05));
+              expect(b.top, closeTo(eb.top, 0.05));
+              expect(b.width, closeTo(eb.width, 0.05));
+              expect(b.height, closeTo(eb.height, 0.05));
+              return true;
+            }
+            return false;
+          }),
+        );
+
+        await tester.pumpAndSettle();
+        expect(controller.currentNotification, isNull);
+      },
+    );
+
+    testWidgets(
+      '2. Dragging up slowly: card translation stays 0.0 while morphProgress increases',
+      (tester) async {
+        await mount(tester);
+        controller.show(
+          const DynamicNotification(title: 'Drag Up Slow', duration: null),
+        );
+        await tester.pumpAndSettle();
+
+        expect(controller.morphProgress, equals(0.0));
+        expect(controller.dragOffset, equals(0.0));
+
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.text('Drag Up Slow')),
+        );
+
+        // Drag up by 15 logical pixels
+        await gesture.moveBy(const Offset(0, -15));
+        await tester.pump();
+
+        expect(controller.dragOffset, equals(-15.0));
+        expect(controller.morphProgress, greaterThan(0.0));
+
+        final transforms = tester.widgetList<Transform>(
+          find.ancestor(
+            of: find.text('Drag Up Slow'),
+            matching: find.byType(Transform),
+          ),
+        );
+        for (final t in transforms) {
+          expect(t.transform.getTranslation().y, equals(0.0));
+        }
+
+        final customPaint = tester.widget<CustomPaint>(
+          find.byKey(const ValueKey('dynamic-notification-shape')),
+        );
+        expect((customPaint.painter as dynamic).drag, equals(0.0));
+
+        // Drag further upward to -25px
+        await gesture.moveBy(const Offset(0, -10));
+        await tester.pump();
+
+        expect(controller.dragOffset, equals(-25.0));
+        expect(controller.morphProgress, greaterThan(0.1875));
+        for (final t in tester.widgetList<Transform>(
+          find.ancestor(
+            of: find.text('Drag Up Slow'),
+            matching: find.byType(Transform),
+          ),
+        )) {
+          expect(t.transform.getTranslation().y, equals(0.0));
+        }
+
+        await gesture.up();
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets(
+      '3. Release before dismiss threshold: springs back to full card (idle, morphProgress 0.0)',
+      (tester) async {
+        await mount(tester);
+        controller.show(
+          const DynamicNotification(title: 'Spring Back Test', duration: null),
+        );
+        await tester.pumpAndSettle();
+
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.text('Spring Back Test')),
+        );
+
+        // Drag upward by -20px (dismiss threshold is -32px default)
+        await gesture.moveBy(const Offset(0, -20));
+        await tester.pump();
+        expect(controller.dragOffset, equals(-20.0));
+        expect(controller.morphProgress, greaterThan(0.0));
+
+        // Release before reaching dismissal threshold
+        await gesture.up();
+        await tester.pump();
+        expect(
+          controller.interactionState,
+          NotificationInteractionState.returning,
+        );
+
+        await tester.pumpAndSettle();
+        expect(controller.interactionState, NotificationInteractionState.idle);
+        expect(controller.morphProgress, equals(0.0));
+        expect(controller.dragOffset, equals(0.0));
+        expect(controller.currentNotification, isNotNull);
+        expect(find.text('Spring Back Test'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      '4. Release past dismiss threshold: exit completes and currentNotification becomes null',
+      (tester) async {
+        await mount(tester);
+        controller.show(
+          const DynamicNotification(title: 'Dismiss Up Test', duration: null),
+        );
+        await tester.pumpAndSettle();
+
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.text('Dismiss Up Test')),
+        );
+
+        // Drag upward past dismiss threshold (-70px < -32px)
+        await gesture.moveBy(const Offset(0, -70));
+        await tester.pump();
+        expect(controller.dragOffset, equals(-70.0));
+
+        // Release past threshold
+        await gesture.up();
+        expect(
+          controller.interactionState,
+          NotificationInteractionState.dismissing,
+        );
+
+        await tester.pumpAndSettle();
+        expect(controller.currentNotification, isNull);
+        expect(controller.interactionState, NotificationInteractionState.idle);
+        expect(find.text('Dismiss Up Test'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      '5. Swipe down past open threshold: onTap callback called once and card exits',
+      (tester) async {
+        await mount(tester);
+        var tapCount = 0;
+        controller.show(
+          DynamicNotification(
+            title: 'Swipe Down Open',
+            duration: null,
+            onTap: () => tapCount++,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.text('Swipe Down Open')),
+        );
+
+        // Drag downward past open threshold (+50px > +44px)
+        await gesture.moveBy(const Offset(0, 50));
+        await tester.pump();
+        expect(
+          controller.interactionState,
+          NotificationInteractionState.dragging,
+        );
+        expect(controller.dragOffset, equals(50.0));
+
+        // Release past open threshold
+        await gesture.up();
+        expect(
+          controller.interactionState,
+          NotificationInteractionState.opening,
+        );
+
+        await tester.pumpAndSettle();
+        expect(tapCount, equals(1));
+        expect(controller.currentNotification, isNull);
+        expect(find.text('Swipe Down Open'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      '6. Latest wins queueing: show() while active replaces pending card and second card enters after first exits',
+      (tester) async {
+        await mount(tester);
+        controller.show(
+          const DynamicNotification(title: 'Active Card 1', duration: null),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Active Card 1'), findsOneWidget);
+
+        // Trigger two show() calls in succession while Card 1 is active
+        controller.show(
+          const DynamicNotification(title: 'Pending Card 2', duration: null),
+        );
+        controller.show(
+          const DynamicNotification(title: 'Queued Card 3', duration: null),
+        );
+
+        // First pump: Card 1 begins exit dismissal
+        await tester.pump();
+        expect(find.text('Active Card 1'), findsOneWidget);
+        expect(find.text('Pending Card 2'), findsNothing);
+        expect(find.text('Queued Card 3'), findsNothing);
+
+        // Card 1 finishes exiting and Card 3 enters (Card 2 replaced)
+        await tester.pumpAndSettle();
+        expect(find.text('Active Card 1'), findsNothing);
+        expect(find.text('Pending Card 2'), findsNothing);
+        expect(find.text('Queued Card 3'), findsOneWidget);
+        expect(controller.currentNotification?.title, 'Queued Card 3');
+      },
+    );
+  });
 }
