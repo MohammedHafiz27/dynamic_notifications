@@ -237,33 +237,30 @@ void main() {
       },
     );
 
-    test(
-      'detects side cutouts on left edge in landscape orientation',
-      () {
-        // In landscape, phone camera is on the left edge
-        const landscapePhone = MediaQueryData(
-          size: Size(892, 412),
-          viewPadding: EdgeInsets.only(left: 48),
-          displayFeatures: [
-            DisplayFeature(
-              bounds: Rect.fromLTWH(10, 194, 24, 24),
-              type: DisplayFeatureType.cutout,
-              state: DisplayFeatureState.unknown,
-            ),
-          ],
-        );
+    test('detects side cutouts on left edge in landscape orientation', () {
+      // In landscape, phone camera is on the left edge
+      const landscapePhone = MediaQueryData(
+        size: Size(892, 412),
+        viewPadding: EdgeInsets.only(left: 48),
+        displayFeatures: [
+          DisplayFeature(
+            bounds: Rect.fromLTWH(10, 194, 24, 24),
+            type: DisplayFeatureType.cutout,
+            state: DisplayFeatureState.unknown,
+          ),
+        ],
+      );
 
-        final geometry = NotchGeometryDetector.fromMediaQuery(
-          mediaQuery: landscapePhone,
-          platform: TargetPlatform.android,
-        );
+      final geometry = NotchGeometryDetector.fromMediaQuery(
+        mediaQuery: landscapePhone,
+        platform: TargetPlatform.android,
+      );
 
-        expect(geometry.hasCutout, isTrue);
-        expect(geometry.edge, CutoutEdge.left);
-        expect(geometry.source, NotchGeometrySource.displayFeature);
-        expect(geometry.anchorPoint, const Offset(33.0, 206.0));
-      },
-    );
+      expect(geometry.hasCutout, isTrue);
+      expect(geometry.edge, CutoutEdge.left);
+      expect(geometry.source, NotchGeometrySource.displayFeature);
+      expect(geometry.anchorPoint, const Offset(33.0, 206.0));
+    });
 
     test('calibrates iOS notch and Dynamic Island profiles accurately', () {
       // iPhone SE / iPad (no notch)
@@ -1145,51 +1142,6 @@ void main() {
       expect(geo.width, 100.0);
     });
 
-    testWidgets(
-      'DynamicNotifications renders visual guides when debugShowGuides is enabled',
-      (tester) async {
-        final ctrl = DynamicNotificationController();
-        const testGeometry = NotchGeometry(
-          bounds: Rect.fromLTWH(188, 8, 24, 24),
-          center: Offset(200, 20),
-          width: 24,
-          height: 24,
-          top: 8,
-          bottom: 32,
-          screenSize: Size(400, 800),
-          insets: EdgeInsets.only(top: 32),
-          source: NotchGeometrySource.displayFeature,
-          confidence: NotchGeometryConfidence.exact,
-          shape: NotchShape.punchHole,
-          hasCutout: true,
-        );
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: DynamicNotifications(
-              controller: ctrl,
-              geometryOverride: testGeometry,
-              debugShowGuides: true,
-              child: const Scaffold(body: Center(child: Text('Content'))),
-            ),
-          ),
-        );
-
-        ctrl.show(
-          const DynamicNotification(title: 'Debug Guides Test', duration: null),
-        );
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 100));
-
-        final overlay = find.byKey(
-          const ValueKey('dynamic-notification-shape'),
-        );
-        expect(overlay, findsOneWidget);
-        // Verify debug guides painted (rect, lines for crosshair & neck guide)
-        expect(tester.takeException(), isNull);
-      },
-    );
-
     testWidgets('DynamicNotifications renders smoothly on entrance and exit', (
       tester,
     ) async {
@@ -1686,9 +1638,7 @@ void main() {
                 controller: ctrl,
                 geometryOverride: testGeometry,
                 progressOverride: p,
-                child: const Scaffold(
-                  body: Center(child: Text('Bulge Test')),
-                ),
+                child: const Scaffold(body: Center(child: Text('Bulge Test'))),
               ),
             ),
           );
@@ -1703,9 +1653,8 @@ void main() {
           if (p == 0.30) {
             expect(
               overlay,
-              paints..path(
-                excludes: [Offset(center, -1.0), Offset(center, -11.0)],
-              ),
+              paints
+                ..path(excludes: [Offset(center, -1.0), Offset(center, -11.0)]),
             );
           } else {
             expect(
@@ -2110,20 +2059,20 @@ void main() {
 
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, (call) async {
-        if (call.method == 'getCutoutGeometry') {
-          return {
-            'hasCutout': true,
-            'edge': 'left',
-            'boundLeft': 30.0,
-            'boundTop': 380.0,
-            'boundRight': 90.0,
-            'boundBottom': 440.0,
-            'boundWidth': 60.0,
-            'boundHeight': 60.0,
-          };
-        }
-        return null;
-      });
+            if (call.method == 'getCutoutGeometry') {
+              return {
+                'hasCutout': true,
+                'edge': 'left',
+                'boundLeft': 30.0,
+                'boundTop': 380.0,
+                'boundRight': 90.0,
+                'boundBottom': 440.0,
+                'boundWidth': 60.0,
+                'boundHeight': 60.0,
+              };
+            }
+            return null;
+          });
 
       const mediaQuery = MediaQueryData(
         size: Size(892, 412),
@@ -2143,40 +2092,43 @@ void main() {
           .setMockMethodCallHandler(channel, null);
     });
 
-    test('AndroidCutoutGeometryProvider handles bottom edge as safe fallback', () async {
-      final channel = MethodChannel('dynamic_notifications/android_geometry');
-      final provider = AndroidCutoutGeometryProvider(channel: channel);
+    test(
+      'AndroidCutoutGeometryProvider handles bottom edge as safe fallback',
+      () async {
+        final channel = MethodChannel('dynamic_notifications/android_geometry');
+        final provider = AndroidCutoutGeometryProvider(channel: channel);
 
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(channel, (call) async {
-        if (call.method == 'getCutoutGeometry') {
-          return {
-            'hasCutout': true,
-            'edge': 'bottom',
-            'boundLeft': 180.0,
-            'boundTop': 840.0,
-            'boundRight': 232.0,
-            'boundBottom': 892.0,
-          };
-        }
-        return null;
-      });
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, (call) async {
+              if (call.method == 'getCutoutGeometry') {
+                return {
+                  'hasCutout': true,
+                  'edge': 'bottom',
+                  'boundLeft': 180.0,
+                  'boundTop': 840.0,
+                  'boundRight': 232.0,
+                  'boundBottom': 892.0,
+                };
+              }
+              return null;
+            });
 
-      const mediaQuery = MediaQueryData(
-        size: Size(412, 892),
-        viewPadding: EdgeInsets.only(bottom: 48),
-        devicePixelRatio: 2.0,
-      );
+        const mediaQuery = MediaQueryData(
+          size: Size(412, 892),
+          viewPadding: EdgeInsets.only(bottom: 48),
+          devicePixelRatio: 2.0,
+        );
 
-      final geo = await provider.load(mediaQuery: mediaQuery);
-      expect(geo, isNotNull);
-      expect(geo!.hasCutout, isFalse);
-      expect(geo.edge, CutoutEdge.none);
+        final geo = await provider.load(mediaQuery: mediaQuery);
+        expect(geo, isNotNull);
+        expect(geo!.hasCutout, isFalse);
+        expect(geo.edge, CutoutEdge.none);
 
-      provider.clear();
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(channel, null);
-    });
+        provider.clear();
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, null);
+      },
+    );
 
     test('detects left-side cutout in landscape even with active top status bar insets', () {
       // Modern Android device in landscape mode with both a 24dp top status bar and a 48dp left cutout inset:
@@ -2212,27 +2164,27 @@ void main() {
       // while getBoundingRectTop() isolates the actual top cutout [490, 0, 590, 80].
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, (call) async {
-        if (call.method == 'getCutoutGeometry') {
-          return {
-            'hasCutout': true,
-            'edge': 'top',
-            'hasPath': true,
-            'pathLeft': 0.0,
-            'pathTop': 0.0,
-            'pathRight': 1080.0,
-            'pathBottom': 2400.0,
-            'pathWidth': 1080.0,
-            'pathHeight': 2400.0,
-            'boundLeft': 490.0,
-            'boundTop': 0.0,
-            'boundRight': 590.0,
-            'boundBottom': 80.0,
-            'boundWidth': 100.0,
-            'boundHeight': 80.0,
-          };
-        }
-        return null;
-      });
+            if (call.method == 'getCutoutGeometry') {
+              return {
+                'hasCutout': true,
+                'edge': 'top',
+                'hasPath': true,
+                'pathLeft': 0.0,
+                'pathTop': 0.0,
+                'pathRight': 1080.0,
+                'pathBottom': 2400.0,
+                'pathWidth': 1080.0,
+                'pathHeight': 2400.0,
+                'boundLeft': 490.0,
+                'boundTop': 0.0,
+                'boundRight': 590.0,
+                'boundBottom': 80.0,
+                'boundWidth': 100.0,
+                'boundHeight': 80.0,
+              };
+            }
+            return null;
+          });
 
       const mediaQuery = MediaQueryData(
         size: Size(412, 892),
@@ -2327,27 +2279,30 @@ void main() {
       expect(geo.animationOrigin.dx, 12.0);
     });
 
-    test('top-right corner camera: animationOrigin uses camera X and anchorTop', () {
-      const geo = NotchGeometry(
-        bounds: Rect.fromLTWH(364, 10, 24, 24),
-        center: Offset(376, 22),
-        width: 24,
-        height: 24,
-        top: 10,
-        bottom: 34,
-        screenSize: Size(412, 892),
-        insets: EdgeInsets.only(top: 40),
-        source: NotchGeometrySource.displayFeature,
-        confidence: NotchGeometryConfidence.exact,
-        shape: NotchShape.punchHole,
-        hasCutout: true,
-        edge: CutoutEdge.top,
-      );
+    test(
+      'top-right corner camera: animationOrigin uses camera X and anchorTop',
+      () {
+        const geo = NotchGeometry(
+          bounds: Rect.fromLTWH(364, 10, 24, 24),
+          center: Offset(376, 22),
+          width: 24,
+          height: 24,
+          top: 10,
+          bottom: 34,
+          screenSize: Size(412, 892),
+          insets: EdgeInsets.only(top: 40),
+          source: NotchGeometrySource.displayFeature,
+          confidence: NotchGeometryConfidence.exact,
+          shape: NotchShape.punchHole,
+          hasCutout: true,
+          edge: CutoutEdge.top,
+        );
 
-      expect(geo.hasCutout, isTrue);
-      expect(geo.hasTopCutout, isTrue);
-      expect(geo.animationOrigin, const Offset(376.0, 33.0));
-    });
+        expect(geo.hasCutout, isTrue);
+        expect(geo.hasTopCutout, isTrue);
+        expect(geo.animationOrigin, const Offset(376.0, 33.0));
+      },
+    );
 
     test('left-side cutout (landscape): physical geometry is left; animationOrigin is virtual top-center', () {
       const geo = NotchGeometry(
@@ -2369,8 +2324,14 @@ void main() {
       expect(geo.hasCutout, isTrue);
       expect(geo.edge, CutoutEdge.left);
       expect(geo.hasTopCutout, isFalse);
-      expect(geo.anchorPoint, const Offset(35.0, 202.0)); // Physical aperture anchor
-      expect(geo.animationOrigin, const Offset(470.0, 4.0)); // Virtual top-center: (48 + 892) / 2 = 470
+      expect(
+        geo.anchorPoint,
+        const Offset(35.0, 202.0),
+      ); // Physical aperture anchor
+      expect(
+        geo.animationOrigin,
+        const Offset(470.0, 4.0),
+      ); // Virtual top-center: (48 + 892) / 2 = 470
     });
 
     test('right-side cutout (reverse landscape): physical geometry is right; animationOrigin is virtual top-center', () {
@@ -2393,8 +2354,14 @@ void main() {
       expect(geo.hasCutout, isTrue);
       expect(geo.edge, CutoutEdge.right);
       expect(geo.hasTopCutout, isFalse);
-      expect(geo.anchorPoint, const Offset(857.0, 202.0)); // Physical aperture anchor
-      expect(geo.animationOrigin, const Offset(422.0, 4.0)); // Virtual top-center: (892 - 48) / 2 = 422
+      expect(
+        geo.anchorPoint,
+        const Offset(857.0, 202.0),
+      ); // Physical aperture anchor
+      expect(
+        geo.animationOrigin,
+        const Offset(422.0, 4.0),
+      ); // Virtual top-center: (892 - 48) / 2 = 422
     });
 
     test('bottom-only cutout: physical geometry is bottom; animationOrigin is virtual top-center', () {
@@ -2417,29 +2384,35 @@ void main() {
       expect(geo.hasCutout, isTrue);
       expect(geo.edge, CutoutEdge.bottom);
       expect(geo.hasTopCutout, isFalse);
-      expect(geo.animationOrigin, const Offset(196.5, 28.0)); // Virtual top-center
+      expect(
+        geo.animationOrigin,
+        const Offset(196.5, 28.0),
+      ); // Virtual top-center
     });
 
-    test('no-cutout fallback: animationOrigin is screen top-center safe area', () {
-      const geo = NotchGeometry(
-        bounds: null,
-        center: Offset(196.5, 22),
-        width: 0,
-        height: 0,
-        top: 0,
-        bottom: 44,
-        screenSize: Size(393, 852),
-        insets: EdgeInsets.only(top: 44),
-        source: NotchGeometrySource.safeArea,
-        confidence: NotchGeometryConfidence.fallback,
-        shape: NotchShape.none,
-        hasCutout: false,
-        edge: CutoutEdge.none,
-      );
+    test(
+      'no-cutout fallback: animationOrigin is screen top-center safe area',
+      () {
+        const geo = NotchGeometry(
+          bounds: null,
+          center: Offset(196.5, 22),
+          width: 0,
+          height: 0,
+          top: 0,
+          bottom: 44,
+          screenSize: Size(393, 852),
+          insets: EdgeInsets.only(top: 44),
+          source: NotchGeometrySource.safeArea,
+          confidence: NotchGeometryConfidence.fallback,
+          shape: NotchShape.none,
+          hasCutout: false,
+          edge: CutoutEdge.none,
+        );
 
-      expect(geo.hasCutout, isFalse);
-      expect(geo.hasTopCutout, isFalse);
-      expect(geo.animationOrigin, const Offset(196.5, 48.0));
-    });
+        expect(geo.hasCutout, isFalse);
+        expect(geo.hasTopCutout, isFalse);
+        expect(geo.animationOrigin, const Offset(196.5, 48.0));
+      },
+    );
   });
 }

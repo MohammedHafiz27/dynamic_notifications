@@ -185,7 +185,6 @@ class DynamicNotifications extends StatefulWidget {
     required this.child,
     this.originLift = 0,
     this.geometryOverride,
-    this.debugShowGuides = false,
     this.progressOverride,
     this.gestureConfig = const NotificationGestureConfig(),
   }) : assert(originLift >= 0 && originLift < double.infinity);
@@ -200,11 +199,6 @@ class DynamicNotifications extends StatefulWidget {
   /// Optional override for the detected notch geometry.
   /// When null, geometry is automatically detected from the platform environment.
   final NotchGeometry? geometryOverride;
-
-  /// When true, renders on-screen visual guides for the reported cutout bounds,
-  /// calculated anchor origin, and the top boundary of the animated neck.
-  /// Defaults to false.
-  final bool debugShowGuides;
 
   /// Optional manual override for animation progress (between 0.0 and 1.0).
   /// Used for frame-by-frame visual inspection and screenshot validation.
@@ -260,38 +254,43 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
       reverseDuration: const Duration(milliseconds: 640),
     )..addStatusListener(_onStatus);
 
-    _springController = AnimationController(
-      vsync: this,
-      duration: widget.gestureConfig.springBackDuration,
-    )..addListener(() {
-        if (_springGeneration != _generation) return;
-        setState(() {
-          _drag = _springAnimation.value;
-          if (_drag <= 0) {
-            final maxUp = widget.gestureConfig.maxUpwardDrag.abs();
-            _animation.value =
-                maxUp > 0 ? (1.0 + _drag / maxUp).clamp(0.0, 1.0) : 1.0;
-          } else {
-            _animation.value = 1.0;
-          }
-        });
-      })..addStatusListener((status) {
-        if (_springGeneration != _generation) return;
-        if (status == AnimationStatus.completed) {
-          if (_interactionState == NotificationInteractionState.dismissing) {
-            _finishExit();
-            return;
-          }
-          setState(() {
-            _drag = 0.0;
-            _dragBaseY = 0.0;
-            _isDragging = false;
-            _animation.value = 1.0;
-            _interactionState = NotificationInteractionState.idle;
+    _springController =
+        AnimationController(
+            vsync: this,
+            duration: widget.gestureConfig.springBackDuration,
+          )
+          ..addListener(() {
+            if (_springGeneration != _generation) return;
+            setState(() {
+              _drag = _springAnimation.value;
+              if (_drag <= 0) {
+                final maxUp = widget.gestureConfig.maxUpwardDrag.abs();
+                _animation.value = maxUp > 0
+                    ? (1.0 + _drag / maxUp).clamp(0.0, 1.0)
+                    : 1.0;
+              } else {
+                _animation.value = 1.0;
+              }
+            });
+          })
+          ..addStatusListener((status) {
+            if (_springGeneration != _generation) return;
+            if (status == AnimationStatus.completed) {
+              if (_interactionState ==
+                  NotificationInteractionState.dismissing) {
+                _finishExit();
+                return;
+              }
+              setState(() {
+                _drag = 0.0;
+                _dragBaseY = 0.0;
+                _isDragging = false;
+                _animation.value = 1.0;
+                _interactionState = NotificationInteractionState.idle;
+              });
+              _resumeTimer();
+            }
           });
-          _resumeTimer();
-        }
-      });
     _springAnimation = const AlwaysStoppedAnimation(0.0);
 
     if (widget.progressOverride != null) {
@@ -349,8 +348,8 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
       AndroidCutoutGeometryProvider.instance
           .load(mediaQuery: MediaQuery.of(context))
           .then((geo) {
-        if (mounted && geo != null) setState(() {});
-      });
+            if (mounted && geo != null) setState(() {});
+          });
     }
   }
 
@@ -430,9 +429,10 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
       _animation.value = 0.0;
       _finishExit();
     } else {
-      final ms = (_animation.reverseDuration!.inMilliseconds *
-              _animation.value.clamp(0.55, 1.0))
-          .round();
+      final ms =
+          (_animation.reverseDuration!.inMilliseconds *
+                  _animation.value.clamp(0.55, 1.0))
+              .round();
       _animation.animateBack(
         0.0,
         duration: Duration(milliseconds: ms),
@@ -455,7 +455,8 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
 
   void _onTimerExpired() {
     if (_current == null || _exiting) return;
-    if (_pointerDown || _interactionState != NotificationInteractionState.idle) {
+    if (_pointerDown ||
+        _interactionState != NotificationInteractionState.idle) {
       return;
     }
     _exit();
@@ -463,7 +464,9 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
 
   void _onStatus(AnimationStatus status) {
     final gen = _generation;
-    if (status == AnimationStatus.completed && !_exiting && !_entranceComplete) {
+    if (status == AnimationStatus.completed &&
+        !_exiting &&
+        !_entranceComplete) {
       _entranceComplete = true;
       if (gen != _generation) return;
       final duration = _current?.duration;
@@ -527,10 +530,7 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
       return;
     }
     setState(() => _interactionState = NotificationInteractionState.returning);
-    _springAnimation = Tween<double>(
-      begin: _drag,
-      end: 0.0,
-    ).animate(
+    _springAnimation = Tween<double>(begin: _drag, end: 0.0).animate(
       CurvedAnimation(
         parent: _springController,
         curve: widget.gestureConfig.springBackCurve,
@@ -610,8 +610,9 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
       _drag = newDrag;
       if (_drag <= 0) {
         final maxUp = widget.gestureConfig.maxUpwardDrag.abs();
-        final dragProgress =
-            maxUp > 0 ? (1.0 + _drag / maxUp).clamp(0.0, 1.0) : 1.0;
+        final dragProgress = maxUp > 0
+            ? (1.0 + _drag / maxUp).clamp(0.0, 1.0)
+            : 1.0;
         _animation.value = dragProgress;
       } else {
         _animation.value = 1.0;
@@ -772,7 +773,6 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
                       anchorOffset,
                       anchorTop,
                       geometry,
-                      widget.debugShowGuides,
                     ),
                   ),
                 ),
@@ -789,7 +789,6 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
     double anchorOffset,
     double anchorTop,
     NotchGeometry geometry,
-    bool debugShowGuides,
   ) {
     final theme = Theme.of(context);
     final style = notification.style;
@@ -833,68 +832,74 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
                 behavior: HitTestBehavior.opaque,
                 onTap: _onTap,
                 child: ClipRRect(
-                borderRadius: BorderRadius.circular(style.borderRadius ?? 36),
-                child: Padding(
-                  padding: style.padding,
-                  child: notification.contentBuilder != null
-                      ? Material(
-                          type: MaterialType.transparency,
-                          child: Builder(builder: notification.contentBuilder!),
-                        )
-                      : Row(
-                          children: [
-                            if (notification.avatar case final avatar?
-                                when constraints.maxWidth >= 150) ...[
-                              CircleAvatar(radius: 21, backgroundImage: avatar),
-                              const SizedBox(width: 12),
-                            ],
-                            Expanded(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    notification.title,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.titleSmall?.copyWith(
-                                      color: foreground,
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w700,
-                                      height: 1.2,
-                                      decoration: TextDecoration.none,
-                                    ),
-                                  ),
-                                  if (notification.message
-                                      case final message?) ...[
-                                    const SizedBox(height: 4),
+                  borderRadius: BorderRadius.circular(style.borderRadius ?? 36),
+                  child: Padding(
+                    padding: style.padding,
+                    child: notification.contentBuilder != null
+                        ? Material(
+                            type: MaterialType.transparency,
+                            child: Builder(
+                              builder: notification.contentBuilder!,
+                            ),
+                          )
+                        : Row(
+                            children: [
+                              if (notification.avatar case final avatar?
+                                  when constraints.maxWidth >= 150) ...[
+                                CircleAvatar(
+                                  radius: 21,
+                                  backgroundImage: avatar,
+                                ),
+                                const SizedBox(width: 12),
+                              ],
+                              Expanded(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
                                     Text(
-                                      message,
-                                      maxLines: 3,
+                                      notification.title,
+                                      maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
-                                      style: theme.textTheme.bodySmall
+                                      style: theme.textTheme.titleSmall
                                           ?.copyWith(
-                                            color: secondary,
-                                            fontSize: 13,
-                                            height: 1.25,
+                                            color: foreground,
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w700,
+                                            height: 1.2,
                                             decoration: TextDecoration.none,
                                           ),
                                     ),
+                                    if (notification.message
+                                        case final message?) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        message,
+                                        maxLines: 3,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: secondary,
+                                              fontSize: 13,
+                                              height: 1.25,
+                                              decoration: TextDecoration.none,
+                                            ),
+                                      ),
+                                    ],
                                   ],
-                                ],
+                                ),
                               ),
-                            ),
-                            if (notification.icon case final icon?
-                                when constraints.maxWidth >= 128) ...[
-                              const SizedBox(width: 12),
-                              Icon(icon, size: 22, color: accent),
+                              if (notification.icon case final icon?
+                                  when constraints.maxWidth >= 128) ...[
+                                const SizedBox(width: 12),
+                                Icon(icon, size: 22, color: accent),
+                              ],
                             ],
-                          ],
-                        ),
+                          ),
+                  ),
                 ),
               ),
             ),
-          ),
           ),
           builder: (context, child) {
             final progress = widget.progressOverride ?? _animation.value;
@@ -915,7 +920,11 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
             final morphProgress = _morphProgress;
             final contentOpacity = reveal;
             final contentScale = lerpDouble(0.94, 1.0, reveal)!;
-            final isInteractionLocked = _exiting || (!_entranceComplete && reveal < 1.0) || (_interactionState != NotificationInteractionState.returning && morphProgress > 0.35);
+            final isInteractionLocked =
+                _exiting ||
+                (!_entranceComplete && reveal < 1.0) ||
+                (_interactionState != NotificationInteractionState.returning &&
+                    morphProgress > 0.35);
             return Stack(
               clipBehavior: Clip.none,
               children: [
@@ -933,7 +942,6 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
                         borderRadius: style.borderRadius,
                         compact: compact,
                         geometry: geometry,
-                        debugShowGuides: debugShowGuides,
                         isExiting: _exiting,
                         morphProgress: morphProgress,
                       ),
@@ -979,7 +987,6 @@ class _NotificationPainter extends CustomPainter {
     required this.borderRadius,
     required this.compact,
     this.geometry,
-    this.debugShowGuides = false,
     this.isExiting = false,
     this.morphProgress = 0.0,
   });
@@ -993,7 +1000,6 @@ class _NotificationPainter extends CustomPainter {
   final double? borderRadius;
   final bool compact;
   final NotchGeometry? geometry;
-  final bool debugShowGuides;
   final bool isExiting;
   final double morphProgress;
 
@@ -1002,8 +1008,8 @@ class _NotificationPainter extends CustomPainter {
     final cardHeight = size.height - landing;
     if (progress == 0 || size.width == 0 || cardHeight <= 0) return;
 
-    final hasCutout = (geometry?.hasCutout ?? false) &&
-        (geometry?.edge == CutoutEdge.top);
+    final hasCutout =
+        (geometry?.hasCutout ?? false) && (geometry?.edge == CutoutEdge.top);
     final isPunchHole = hasCutout && geometry?.shape == NotchShape.punchHole;
     final isPill = hasCutout && geometry?.shape == NotchShape.pill;
 
@@ -1076,9 +1082,7 @@ class _NotificationPainter extends CustomPainter {
         1.0 +
         0.28 *
             (1.0 - expand) *
-            math.sin(
-              math.pi * (progress / 0.36).clamp(0.0, 1.0),
-            );
+            math.sin(math.pi * (progress / 0.36).clamp(0.0, 1.0));
     final dropSize =
         math.min(48.0, math.min(size.width, cardHeight)) *
         (compact ? 1.0 : (0.32 + 0.68 * grow));
@@ -1110,10 +1114,7 @@ class _NotificationPainter extends CustomPainter {
     } else {
       final maxDetachment = math.max(0.0, landing + cardHeight - yApex);
       final minNeck = math.min(78.0, maxDetachment);
-      final baseDetachment = math.max(
-        rect.bottom - drag - yApex,
-        minNeck,
-      );
+      final baseDetachment = math.max(rect.bottom - drag - yApex, minNeck);
       detachmentExtent = math.max(0.0, baseDetachment + drag);
       minTip = 0.0;
     }
@@ -1198,12 +1199,11 @@ class _NotificationPainter extends CustomPainter {
           yContact + (yBottom - yContact) * lerpDouble(0.48, 0.36, u)!;
 
       // Bulb width: rounded bulb forming at the bottom
-      final wBulb =
-          lerpDouble(
-            10.0,
-            math.max(width / 2, 24.5),
-            Curves.easeInOutCubic.transform(u),
-          )!;
+      final wBulb = lerpDouble(
+        10.0,
+        math.max(width / 2, 24.5),
+        Curves.easeInOutCubic.transform(u),
+      )!;
       final bulbY =
           yContact + (yBottom - yContact) * lerpDouble(0.76, 0.68, u)!;
 
@@ -1314,19 +1314,20 @@ class _NotificationPainter extends CustomPainter {
       path.close();
 
       if (surface != Colors.black) {
-        paint.shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Colors.black,
-            Color.lerp(Colors.black, surface, 0.35)!,
-            Color.lerp(Colors.black, surface, 0.85)!,
-            surface,
-          ],
-          stops: const [0.0, 0.30, 0.70, 1.0],
-        ).createShader(
-          Rect.fromLTRB(0, yContact, 1, math.max(yBottom, yContact + 1.0)),
-        );
+        paint.shader =
+            LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.black,
+                Color.lerp(Colors.black, surface, 0.35)!,
+                Color.lerp(Colors.black, surface, 0.85)!,
+                surface,
+              ],
+              stops: const [0.0, 0.30, 0.70, 1.0],
+            ).createShader(
+              Rect.fromLTRB(0, yContact, 1, math.max(yBottom, yContact + 1.0)),
+            );
       }
     } else {
       final bulbY = rect.top + height * (0.50 + 0.14 * effectiveEgg);
@@ -1415,7 +1416,6 @@ class _NotificationPainter extends CustomPainter {
           )
           ..close();
       }
-
     }
 
     // Meniscus tip remaining on the Dynamic Island aperture after detachment
@@ -1471,7 +1471,10 @@ class _NotificationPainter extends CustomPainter {
         ? math.min(-24.0, math.min(rect.left - 24.0, centerX - tailPad))
         : math.min(-24.0, rect.left - 24.0);
     final clipRight = tailRight != null
-        ? math.max(size.width + 24.0, math.max(rect.right + 24.0, centerX + tailPad))
+        ? math.max(
+            size.width + 24.0,
+            math.max(rect.right + 24.0, centerX + tailPad),
+          )
         : math.max(size.width + 24.0, rect.right + 24.0);
     final minPathY = tailTopY ?? 0.0;
     final maxAnchorOverlap = math.max(0.0, anchorTop);
@@ -1486,9 +1489,7 @@ class _NotificationPainter extends CustomPainter {
     final clipBottom = math.max(size.height + 24.0, rect.bottom + 24.0);
 
     canvas.save();
-    canvas.clipRect(
-      Rect.fromLTRB(clipLeft, clipTop, clipRight, clipBottom),
-    );
+    canvas.clipRect(Rect.fromLTRB(clipLeft, clipTop, clipRight, clipBottom));
     final shadowOpacity = expand > 0
         ? lerpDouble(0.20, 0.26, expand)!
         : (!compact && progress > 0.28
@@ -1508,88 +1509,7 @@ class _NotificationPainter extends CustomPainter {
       canvas.drawPath(meniscusPath, Paint()..color = Colors.black);
     }
     canvas.restore();
-
-    if (debugShowGuides) {
-      _paintDebugGuides(
-        canvas: canvas,
-        size: size,
-        centerX: centerX,
-        yContact: tailTopY ?? yApex,
-        yApex: yApex,
-        tailLeft: tailLeft,
-        tailRight: tailRight,
-      );
-    }
   }
-
-  void _paintDebugGuides({
-    required Canvas canvas,
-    required Size size,
-    required double centerX,
-    required double yContact,
-    required double yApex,
-    required double? tailLeft,
-    required double? tailRight,
-  }) {
-    // 1. Cutout bounding box in local painter coordinates
-    final hasTopCutout = (geometry?.hasCutout ?? false) &&
-        (geometry?.edge == CutoutEdge.top);
-    if (hasTopCutout && geometry?.bounds != null) {
-      final b = geometry!.bounds!;
-      final cutoutCenterLocalX = size.width / 2 + anchorOffset;
-      final cutoutCenterLocalY = b.center.dy - anchorTop;
-      final localBounds = Rect.fromCenter(
-        center: Offset(cutoutCenterLocalX, cutoutCenterLocalY),
-        width: b.width,
-        height: b.height,
-      );
-      final boundsPaint = Paint()
-        ..color = const Color(0xFF00E5FF)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.0;
-      canvas.drawRect(localBounds, boundsPaint);
-    }
-
-    // 2. Origin crosshair (anchor origin at local Y = 0)
-    final originPaint = Paint()
-      ..color = const Color(0xFFFF1744)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0;
-    canvas.drawLine(
-      Offset(centerX - 12, 0),
-      Offset(centerX + 12, 0),
-      originPaint,
-    );
-    canvas.drawLine(Offset(centerX, -12), Offset(centerX, 12), originPaint);
-
-    // 3. Top of animated neck and attachment contact points
-    if (tailLeft != null && tailRight != null) {
-      final neckGuidePaint = Paint()
-        ..color = const Color(0xFFFFEA00)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.0;
-      canvas.drawLine(
-        Offset(tailLeft, yContact),
-        Offset(tailRight, yContact),
-        neckGuidePaint,
-      );
-      canvas.drawCircle(
-        Offset(tailLeft, yContact),
-        3.0,
-        neckGuidePaint..style = PaintingStyle.fill,
-      );
-      canvas.drawCircle(
-        Offset(tailRight, yContact),
-        3.0,
-        neckGuidePaint..style = PaintingStyle.fill,
-      );
-      final apexPaint = Paint()
-        ..color = const Color(0xFF76FF03)
-        ..style = PaintingStyle.fill;
-      canvas.drawCircle(Offset(centerX, yApex), 3.5, apexPaint);
-    }
-  }
-
 
   @override
   bool shouldRepaint(_NotificationPainter old) =>
@@ -1602,7 +1522,6 @@ class _NotificationPainter extends CustomPainter {
       old.borderRadius != borderRadius ||
       old.compact != compact ||
       old.geometry != geometry ||
-      old.debugShowGuides != debugShowGuides ||
       old.isExiting != isExiting ||
       old.morphProgress != morphProgress;
 }

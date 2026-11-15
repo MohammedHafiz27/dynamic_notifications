@@ -137,7 +137,6 @@ No native configuration or Podfile changes are required. Geometry detection on i
 | `child` | `Widget` | *Required* | The underlying widget subtree (typically your navigator from `MaterialApp.builder`). |
 | `originLift` | `double` | `0.0` | Moves the automatic drop origin up by this many logical pixels (must be `>= 0`). |
 | `gestureConfig` | `NotificationGestureConfig` | `const NotificationGestureConfig()` | Thresholds and curves for interactive drag, fling, tap, and spring return. |
-| `debugShowGuides` | `bool` | `false` | Renders visual guides showing detected cutout bounds, anchor origin, and neck boundaries. |
 | `geometryOverride` | `NotchGeometry?` | `null` | Manually overrides detected notch geometry (useful for testing or simulator verification). |
 | `progressOverride` | `double?` | `null` | Freezes animation progress between `0.0` (cutout) and `1.0` (card) for inspection. |
 

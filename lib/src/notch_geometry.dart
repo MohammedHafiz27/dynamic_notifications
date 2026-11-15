@@ -223,21 +223,21 @@ class NotchGeometry {
 
   @override
   int get hashCode => Object.hash(
-        bounds,
-        center,
-        width,
-        height,
-        top,
-        bottom,
-        screenSize,
-        insets,
-        source,
-        confidence,
-        shape,
-        hasCutout,
-        edge,
-        devicePixelRatio,
-      );
+    bounds,
+    center,
+    width,
+    height,
+    top,
+    bottom,
+    screenSize,
+    insets,
+    source,
+    confidence,
+    shape,
+    hasCutout,
+    edge,
+    devicePixelRatio,
+  );
 
   @override
   String toString() =>
@@ -261,10 +261,7 @@ class NotchGeometryDetector {
         cached.devicePixelRatio == mq.devicePixelRatio) {
       return cached;
     }
-    return fromMediaQuery(
-      mediaQuery: mq,
-      platform: platform,
-    );
+    return fromMediaQuery(mediaQuery: mq, platform: platform);
   }
 
   /// Detects and resolves notch geometry from [mediaQuery] and [platform].
@@ -299,7 +296,8 @@ class NotchGeometryDetector {
       final sideMarginRight = math.max(padding.right, 48.0);
 
       final hasTopInset = padding.top > 0;
-      final isInsideTopInset = hasTopInset &&
+      final isInsideTopInset =
+          hasTopInset &&
           bounds.top <= padding.top &&
           bounds.bottom <= math.max(padding.top + 8.0, 48.0);
 
@@ -316,7 +314,8 @@ class NotchGeometryDetector {
       // In portrait, any cutout situated in the top safe area / status bar region belongs
       // to the top edge (e.g. Honor View 20 corner punch-hole) and must never be misclassified as a side cutout.
       // In landscape, top-edge cutouts are identified when within the top inset and outside side insets.
-      final isTopCutout = (orientation == Orientation.portrait &&
+      final isTopCutout =
+          (orientation == Orientation.portrait &&
               (isInsideTopInset || isTopRegion)) ||
           (isInsideTopInset && !isInsideLeftInset && !isInsideRightInset) ||
           (isTopRegion &&
@@ -326,7 +325,8 @@ class NotchGeometryDetector {
               padding.right == 0 &&
               bounds.top <= 8.0);
 
-      final isLeftSide = !isTopCutout &&
+      final isLeftSide =
+          !isTopCutout &&
           (isInsideLeftInset ||
               (bounds.left <= 2.0 &&
                   bounds.width < size.width * 0.5 &&
@@ -336,7 +336,8 @@ class NotchGeometryDetector {
                   bounds.width < size.width * 0.5 &&
                   !isInsideTopInset));
 
-      final isRightSide = !isTopCutout &&
+      final isRightSide =
+          !isTopCutout &&
           (isInsideRightInset ||
               (bounds.right >= size.width - 2.0 &&
                   bounds.width < size.width * 0.5 &&
@@ -382,16 +383,19 @@ class NotchGeometryDetector {
     // 4. Never combine unrelated cutouts into one bounding rectangle.
     if (topCandidates.isNotEmpty) {
       // Find candidate closest to viewport center
-      topCandidates.sort((a, b) => (a.center.dx - viewportCenter)
-          .abs()
-          .compareTo((b.center.dx - viewportCenter).abs()));
+      topCandidates.sort(
+        (a, b) => (a.center.dx - viewportCenter).abs().compareTo(
+          (b.center.dx - viewportCenter).abs(),
+        ),
+      );
 
       Rect resolved = topCandidates.first;
       if (topCandidates.length > 1) {
         final second = topCandidates[1];
         // If two cutouts are adjacent (e.g. dual punch holes separated by a small gap),
         // combine their bounding boxes into a single cluster.
-        final gapX = (resolved.center.dx - second.center.dx).abs() -
+        final gapX =
+            (resolved.center.dx - second.center.dx).abs() -
             (resolved.width + second.width) / 2;
         if (gapX <= 16.0 && (resolved.top - second.top).abs() <= 12.0) {
           resolved = resolved.expandToInclude(second);
@@ -406,7 +410,7 @@ class NotchGeometryDetector {
         final statusBarHeight = math.max(padding.top, resolved.bottom);
         final touchesStatusBarBottom =
             (resolved.bottom - padding.top).abs() <= 3.0 ||
-                resolved.bottom >= padding.top - 2.0;
+            resolved.bottom >= padding.top - 2.0;
 
         if (touchesStatusBarBottom) {
           if (resolved.width <= 72.0) {
@@ -423,8 +427,10 @@ class NotchGeometryDetector {
               statusBarHeight -
                   math.max(4.0, math.min(8.5, statusBarHeight * 0.18)),
             );
-            final physicalWidth =
-                math.min(resolved.width, math.max(24.0, radius * 2));
+            final physicalWidth = math.min(
+              resolved.width,
+              math.max(24.0, radius * 2),
+            );
             final physicalBounds = Rect.fromCenter(
               center: Offset(resolved.center.dx, centerY),
               width: physicalWidth,
@@ -493,15 +499,19 @@ class NotchGeometryDetector {
     }
 
     if (leftCandidates.isNotEmpty) {
-      final viewportVerticalCenter = (padding.top + size.height - padding.bottom) / 2;
-      leftCandidates.sort((a, b) => (a.center.dy - viewportVerticalCenter)
-          .abs()
-          .compareTo((b.center.dy - viewportVerticalCenter).abs()));
+      final viewportVerticalCenter =
+          (padding.top + size.height - padding.bottom) / 2;
+      leftCandidates.sort(
+        (a, b) => (a.center.dy - viewportVerticalCenter).abs().compareTo(
+          (b.center.dy - viewportVerticalCenter).abs(),
+        ),
+      );
 
       Rect resolved = leftCandidates.first;
       if (leftCandidates.length > 1) {
         final second = leftCandidates[1];
-        final gapY = (resolved.center.dy - second.center.dy).abs() -
+        final gapY =
+            (resolved.center.dy - second.center.dy).abs() -
             (resolved.height + second.height) / 2;
         if (gapY <= 16.0 && (resolved.left - second.left).abs() <= 12.0) {
           resolved = resolved.expandToInclude(second);
@@ -528,15 +538,19 @@ class NotchGeometryDetector {
     }
 
     if (rightCandidates.isNotEmpty) {
-      final viewportVerticalCenter = (padding.top + size.height - padding.bottom) / 2;
-      rightCandidates.sort((a, b) => (a.center.dy - viewportVerticalCenter)
-          .abs()
-          .compareTo((b.center.dy - viewportVerticalCenter).abs()));
+      final viewportVerticalCenter =
+          (padding.top + size.height - padding.bottom) / 2;
+      rightCandidates.sort(
+        (a, b) => (a.center.dy - viewportVerticalCenter).abs().compareTo(
+          (b.center.dy - viewportVerticalCenter).abs(),
+        ),
+      );
 
       Rect resolved = rightCandidates.first;
       if (rightCandidates.length > 1) {
         final second = rightCandidates[1];
-        final gapY = (resolved.center.dy - second.center.dy).abs() -
+        final gapY =
+            (resolved.center.dy - second.center.dy).abs() -
             (resolved.height + second.height) / 2;
         if (gapY <= 16.0 && (resolved.right - second.right).abs() <= 12.0) {
           resolved = resolved.expandToInclude(second);
@@ -637,7 +651,9 @@ class NotchGeometryDetector {
       bottom: padding.top,
       screenSize: size,
       insets: padding,
-      source: hasInsets ? NotchGeometrySource.safeArea : NotchGeometrySource.none,
+      source: hasInsets
+          ? NotchGeometrySource.safeArea
+          : NotchGeometrySource.none,
       confidence: hasInsets
           ? NotchGeometryConfidence.fallback
           : NotchGeometryConfidence.none,
@@ -647,7 +663,10 @@ class NotchGeometryDetector {
     );
   }
 
-  static NotchShape _classifyShape(Rect bounds, [CutoutEdge edge = CutoutEdge.top]) {
+  static NotchShape _classifyShape(
+    Rect bounds, [
+    CutoutEdge edge = CutoutEdge.top,
+  ]) {
     // Cutouts attached to or touching the display edge are notches if wide
     if (edge == CutoutEdge.top && bounds.top <= 2.0) {
       return NotchShape.notch;
@@ -670,7 +689,9 @@ class NotchGeometryDetector {
 /// (including Android 12+ / API 31+ [DisplayCutout.getCutoutPath]) via a platform channel.
 class AndroidCutoutGeometryProvider {
   AndroidCutoutGeometryProvider({
-    this.channel = const MethodChannel('dynamic_notifications/android_geometry'),
+    this.channel = const MethodChannel(
+      'dynamic_notifications/android_geometry',
+    ),
   });
 
   /// The shared singleton instance.
@@ -718,8 +739,9 @@ class AndroidCutoutGeometryProvider {
 
   Future<NotchGeometry?> _loadInternal(MediaQueryData mediaQuery) async {
     try {
-      final res =
-          await channel.invokeMapMethod<String, dynamic>('getCutoutGeometry');
+      final res = await channel.invokeMapMethod<String, dynamic>(
+        'getCutoutGeometry',
+      );
       if (res == null) return null;
       final hasCutout = res['hasCutout'] as bool? ?? false;
       final insets = mediaQuery.viewPadding != EdgeInsets.zero
@@ -794,8 +816,9 @@ class AndroidCutoutGeometryProvider {
         return _cached;
       }
 
-      final dpr =
-          mediaQuery.devicePixelRatio > 0 ? mediaQuery.devicePixelRatio : 1.0;
+      final dpr = mediaQuery.devicePixelRatio > 0
+          ? mediaQuery.devicePixelRatio
+          : 1.0;
       final hasPath = res['hasPath'] as bool? ?? false;
       Rect? resolvedBounds;
       NotchGeometrySource source = NotchGeometrySource.displayFeature;
@@ -807,8 +830,12 @@ class AndroidCutoutGeometryProvider {
         final bTop = (res['boundTop'] as num).toDouble();
         final bRight = (res['boundRight'] as num).toDouble();
         final bBottom = (res['boundBottom'] as num).toDouble();
-        final candidate =
-            Rect.fromLTRB(bLeft / dpr, bTop / dpr, bRight / dpr, bBottom / dpr);
+        final candidate = Rect.fromLTRB(
+          bLeft / dpr,
+          bTop / dpr,
+          bRight / dpr,
+          bBottom / dpr,
+        );
         if (candidate.isFinite &&
             !candidate.isEmpty &&
             candidate.width > 0 &&
@@ -824,9 +851,14 @@ class AndroidCutoutGeometryProvider {
         final pTop = (res['pathTop'] as num).toDouble();
         final pRight = (res['pathRight'] as num).toDouble();
         final pBottom = (res['pathBottom'] as num).toDouble();
-        final candidate =
-            Rect.fromLTRB(pLeft / dpr, pTop / dpr, pRight / dpr, pBottom / dpr);
-        final isValidCandidate = candidate.isFinite &&
+        final candidate = Rect.fromLTRB(
+          pLeft / dpr,
+          pTop / dpr,
+          pRight / dpr,
+          pBottom / dpr,
+        );
+        final isValidCandidate =
+            candidate.isFinite &&
             !candidate.isEmpty &&
             candidate.width > 0 &&
             candidate.height > 0 &&

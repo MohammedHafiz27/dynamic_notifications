@@ -1708,227 +1708,254 @@ void main() {
   );
 
   group('Interactive Swipe-Up Reverse Morph Into Native Notch / Dynamic Island', () {
-    testWidgets('1. Initial expanded state: morphProgress == 0.0 and card full width', (tester) async {
+    testWidgets(
+      '1. Initial expanded state: morphProgress == 0.0 and card full width',
+      (tester) async {
+        await mount(tester);
+        controller.show(
+          const DynamicNotification(
+            title: 'Morph Test Initial',
+            message: 'Fully expanded card',
+            duration: null,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(controller.morphProgress, 0.0);
+        expect(controller.dragOffset, 0.0);
+        expect(controller.interactionState, NotificationInteractionState.idle);
+
+        final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+        final shapeSize = tester.getSize(shape);
+        expect(shapeSize.width, greaterThan(300.0));
+        expect(find.text('Morph Test Initial').hitTestable(), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      '2. Small upward drag: morphProgress ~ 0.25, content visible, width begins contracting',
+      (tester) async {
+        await mount(tester);
+        controller.show(
+          const DynamicNotification(
+            title: 'Small Morph Drag',
+            message: 'Progress 0.25',
+            duration: null,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.text('Small Morph Drag')),
+        );
+        await gesture.moveBy(const Offset(0, -20));
+        await tester.pump();
+
+        expect(controller.dragOffset, -20.0);
+        expect(controller.morphProgress, closeTo(0.25, 0.01));
+        expect(
+          controller.interactionState,
+          NotificationInteractionState.dragging,
+        );
+        expect(find.text('Small Morph Drag').hitTestable(), findsOneWidget);
+
+        await gesture.up();
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets(
+      '3. Medium upward drag: morphProgress == 0.50, content opacity is 0.0',
+      (tester) async {
+        await mount(tester);
+        controller.show(
+          const DynamicNotification(
+            title: 'Medium Morph Drag',
+            message: 'Progress 0.50',
+            duration: null,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.text('Medium Morph Drag')),
+        );
+        await gesture.moveBy(const Offset(0, -40));
+        await tester.pump();
+
+        expect(controller.dragOffset, -40.0);
+        expect(controller.morphProgress, closeTo(0.50, 0.01));
+        // Content has faded out completely (contentOpacity <= 0)
+        expect(find.text('Medium Morph Drag').hitTestable(), findsNothing);
+
+        await gesture.up();
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets(
+      '4. Near-complete upward morph: morphProgress == 0.85, compact pill near anchor',
+      (tester) async {
+        await mount(tester);
+        controller.show(
+          const DynamicNotification(
+            title: 'Near Complete Drag',
+            message: 'Progress 0.85',
+            duration: null,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.text('Near Complete Drag')),
+        );
+        await gesture.moveBy(const Offset(0, -68));
+        await tester.pump();
+
+        expect(controller.dragOffset, -68.0);
+        expect(controller.morphProgress, closeTo(0.85, 0.01));
+        expect(find.text('Near Complete Drag').hitTestable(), findsNothing);
+
+        await gesture.up();
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets(
+      '5. Complete upward morph: reaches maxUpwardDrag (1.0) and completes exit on release',
+      (tester) async {
+        await mount(tester);
+        controller.show(
+          const DynamicNotification(
+            title: 'Max Morph Drag',
+            message: 'Progress 1.0',
+            duration: null,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.text('Max Morph Drag')),
+        );
+        await gesture.moveBy(const Offset(0, -85)); // exceeds -80 maxUpwardDrag
+        await tester.pump();
+
+        expect(controller.dragOffset, -80.0);
+        expect(controller.morphProgress, 1.0);
+
+        await gesture.up();
+        await tester.pumpAndSettle();
+
+        expect(controller.interactionState, NotificationInteractionState.idle);
+        expect(find.text('Max Morph Drag'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      '6. Real-time direction reversal: upward drag reverses downward smoothly restoring card and content',
+      (tester) async {
+        await mount(tester);
+        var opened = 0;
+        controller.show(
+          DynamicNotification(
+            title: 'Reversal Drag',
+            message: 'Real-time recovery',
+            duration: null,
+            onTap: () => opened++,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.text('Reversal Drag')),
+        );
+
+        // 1. Drag upward by -45px (content fades)
+        await gesture.moveBy(const Offset(0, -45));
+        await tester.pump();
+        expect(controller.dragOffset, -45.0);
+        expect(controller.morphProgress, closeTo(45.0 / 80.0, 0.01));
+        expect(find.text('Reversal Drag').hitTestable(), findsNothing);
+
+        // 2. Reverse direction downward to +20px without releasing pointer
+        await gesture.moveBy(const Offset(0, 65)); // -45 + 65 = +20
+        await tester.pump();
+        expect(controller.dragOffset, 20.0);
+        expect(controller.morphProgress, 0.0);
+        expect(find.text('Reversal Drag').hitTestable(), findsOneWidget);
+
+        // 3. Move back to origin 0px and release
+        await gesture.moveBy(const Offset(0, -20));
+        await tester.pump();
+        expect(controller.dragOffset, 0.0);
+        expect(controller.morphProgress, 0.0);
+        await gesture.up();
+        await tester.pumpAndSettle();
+
+        expect(opened, 0);
+        expect(find.text('Reversal Drag'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      '7. Incomplete upward drag springs back to resting position without dismissing',
+      (tester) async {
+        await mount(tester);
+        controller.show(
+          const DynamicNotification(title: 'Spring Back Morph', duration: null),
+        );
+        await tester.pumpAndSettle();
+
+        // Drag upward by -16px (below -32 threshold)
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.text('Spring Back Morph')),
+        );
+        await gesture.moveBy(const Offset(0, -16));
+        await tester.pump();
+        expect(controller.dragOffset, -16.0);
+
+        await gesture.up();
+        expect(
+          controller.interactionState,
+          NotificationInteractionState.returning,
+        );
+
+        await tester.pumpAndSettle();
+        expect(controller.interactionState, NotificationInteractionState.idle);
+        expect(controller.dragOffset, 0.0);
+        expect(controller.morphProgress, 0.0);
+        expect(find.text('Spring Back Morph'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      '8. Fast upward flick triggers reverse morph dismissal even from small distance',
+      (tester) async {
+        await mount(tester);
+        controller.show(
+          const DynamicNotification(title: 'Flick Dismiss', duration: null),
+        );
+        await tester.pumpAndSettle();
+
+        // Small drag -10px, but fast upward fling
+        await tester.fling(
+          find.text('Flick Dismiss'),
+          const Offset(0, -10),
+          1000.0,
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Flick Dismiss'), findsNothing);
+        expect(controller.interactionState, NotificationInteractionState.idle);
+      },
+    );
+
+    testWidgets('9. Slow upward drag crossing threshold dismisses into notch', (
+      tester,
+    ) async {
       await mount(tester);
       controller.show(
-        const DynamicNotification(
-          title: 'Morph Test Initial',
-          message: 'Fully expanded card',
-          duration: null,
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(controller.morphProgress, 0.0);
-      expect(controller.dragOffset, 0.0);
-      expect(controller.interactionState, NotificationInteractionState.idle);
-
-      final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
-      final shapeSize = tester.getSize(shape);
-      expect(shapeSize.width, greaterThan(300.0));
-      expect(find.text('Morph Test Initial').hitTestable(), findsOneWidget);
-    });
-
-    testWidgets('2. Small upward drag: morphProgress ~ 0.25, content visible, width begins contracting', (tester) async {
-      await mount(tester);
-      controller.show(
-        const DynamicNotification(
-          title: 'Small Morph Drag',
-          message: 'Progress 0.25',
-          duration: null,
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      final gesture = await tester.startGesture(
-        tester.getCenter(find.text('Small Morph Drag')),
-      );
-      await gesture.moveBy(const Offset(0, -20));
-      await tester.pump();
-
-      expect(controller.dragOffset, -20.0);
-      expect(controller.morphProgress, closeTo(0.25, 0.01));
-      expect(controller.interactionState, NotificationInteractionState.dragging);
-      expect(find.text('Small Morph Drag').hitTestable(), findsOneWidget);
-
-      await gesture.up();
-      await tester.pumpAndSettle();
-    });
-
-    testWidgets('3. Medium upward drag: morphProgress == 0.50, content opacity is 0.0', (tester) async {
-      await mount(tester);
-      controller.show(
-        const DynamicNotification(
-          title: 'Medium Morph Drag',
-          message: 'Progress 0.50',
-          duration: null,
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      final gesture = await tester.startGesture(
-        tester.getCenter(find.text('Medium Morph Drag')),
-      );
-      await gesture.moveBy(const Offset(0, -40));
-      await tester.pump();
-
-      expect(controller.dragOffset, -40.0);
-      expect(controller.morphProgress, closeTo(0.50, 0.01));
-      // Content has faded out completely (contentOpacity <= 0)
-      expect(find.text('Medium Morph Drag').hitTestable(), findsNothing);
-
-      await gesture.up();
-      await tester.pumpAndSettle();
-    });
-
-    testWidgets('4. Near-complete upward morph: morphProgress == 0.85, compact pill near anchor', (tester) async {
-      await mount(tester);
-      controller.show(
-        const DynamicNotification(
-          title: 'Near Complete Drag',
-          message: 'Progress 0.85',
-          duration: null,
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      final gesture = await tester.startGesture(
-        tester.getCenter(find.text('Near Complete Drag')),
-      );
-      await gesture.moveBy(const Offset(0, -68));
-      await tester.pump();
-
-      expect(controller.dragOffset, -68.0);
-      expect(controller.morphProgress, closeTo(0.85, 0.01));
-      expect(find.text('Near Complete Drag').hitTestable(), findsNothing);
-
-      await gesture.up();
-      await tester.pumpAndSettle();
-    });
-
-    testWidgets('5. Complete upward morph: reaches maxUpwardDrag (1.0) and completes exit on release', (tester) async {
-      await mount(tester);
-      controller.show(
-        const DynamicNotification(
-          title: 'Max Morph Drag',
-          message: 'Progress 1.0',
-          duration: null,
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      final gesture = await tester.startGesture(
-        tester.getCenter(find.text('Max Morph Drag')),
-      );
-      await gesture.moveBy(const Offset(0, -85)); // exceeds -80 maxUpwardDrag
-      await tester.pump();
-
-      expect(controller.dragOffset, -80.0);
-      expect(controller.morphProgress, 1.0);
-
-      await gesture.up();
-      await tester.pumpAndSettle();
-
-      expect(controller.interactionState, NotificationInteractionState.idle);
-      expect(find.text('Max Morph Drag'), findsNothing);
-    });
-
-    testWidgets('6. Real-time direction reversal: upward drag reverses downward smoothly restoring card and content', (tester) async {
-      await mount(tester);
-      var opened = 0;
-      controller.show(
-        DynamicNotification(
-          title: 'Reversal Drag',
-          message: 'Real-time recovery',
-          duration: null,
-          onTap: () => opened++,
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      final gesture = await tester.startGesture(
-        tester.getCenter(find.text('Reversal Drag')),
-      );
-
-      // 1. Drag upward by -45px (content fades)
-      await gesture.moveBy(const Offset(0, -45));
-      await tester.pump();
-      expect(controller.dragOffset, -45.0);
-      expect(controller.morphProgress, closeTo(45.0 / 80.0, 0.01));
-      expect(find.text('Reversal Drag').hitTestable(), findsNothing);
-
-      // 2. Reverse direction downward to +20px without releasing pointer
-      await gesture.moveBy(const Offset(0, 65)); // -45 + 65 = +20
-      await tester.pump();
-      expect(controller.dragOffset, 20.0);
-      expect(controller.morphProgress, 0.0);
-      expect(find.text('Reversal Drag').hitTestable(), findsOneWidget);
-
-      // 3. Move back to origin 0px and release
-      await gesture.moveBy(const Offset(0, -20));
-      await tester.pump();
-      expect(controller.dragOffset, 0.0);
-      expect(controller.morphProgress, 0.0);
-      await gesture.up();
-      await tester.pumpAndSettle();
-
-      expect(opened, 0);
-      expect(find.text('Reversal Drag'), findsOneWidget);
-    });
-
-    testWidgets('7. Incomplete upward drag springs back to resting position without dismissing', (tester) async {
-      await mount(tester);
-      controller.show(
-        const DynamicNotification(
-          title: 'Spring Back Morph',
-          duration: null,
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      // Drag upward by -16px (below -32 threshold)
-      final gesture = await tester.startGesture(
-        tester.getCenter(find.text('Spring Back Morph')),
-      );
-      await gesture.moveBy(const Offset(0, -16));
-      await tester.pump();
-      expect(controller.dragOffset, -16.0);
-
-      await gesture.up();
-      expect(controller.interactionState, NotificationInteractionState.returning);
-
-      await tester.pumpAndSettle();
-      expect(controller.interactionState, NotificationInteractionState.idle);
-      expect(controller.dragOffset, 0.0);
-      expect(controller.morphProgress, 0.0);
-      expect(find.text('Spring Back Morph'), findsOneWidget);
-    });
-
-    testWidgets('8. Fast upward flick triggers reverse morph dismissal even from small distance', (tester) async {
-      await mount(tester);
-      controller.show(
-        const DynamicNotification(
-          title: 'Flick Dismiss',
-          duration: null,
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      // Small drag -10px, but fast upward fling
-      await tester.fling(find.text('Flick Dismiss'), const Offset(0, -10), 1000.0);
-      await tester.pumpAndSettle();
-
-      expect(find.text('Flick Dismiss'), findsNothing);
-      expect(controller.interactionState, NotificationInteractionState.idle);
-    });
-
-    testWidgets('9. Slow upward drag crossing threshold dismisses into notch', (tester) async {
-      await mount(tester);
-      controller.show(
-        const DynamicNotification(
-          title: 'Slow Threshold Drag',
-          duration: null,
-        ),
+        const DynamicNotification(title: 'Slow Threshold Drag', duration: null),
       );
       await tester.pumpAndSettle();
 
@@ -1941,123 +1968,139 @@ void main() {
       expect(controller.dragOffset, -40.0);
 
       await gesture.up();
-      expect(controller.interactionState, NotificationInteractionState.dismissing);
+      expect(
+        controller.interactionState,
+        NotificationInteractionState.dismissing,
+      );
 
       await tester.pumpAndSettle();
       expect(find.text('Slow Threshold Drag'), findsNothing);
     });
 
-    testWidgets('10. Pointer cancellation during morph returns safely to resting state', (tester) async {
-      await mount(tester);
-      controller.show(
-        const DynamicNotification(
-          title: 'Cancel Morph',
-          duration: null,
-        ),
-      );
-      await tester.pumpAndSettle();
+    testWidgets(
+      '10. Pointer cancellation during morph returns safely to resting state',
+      (tester) async {
+        await mount(tester);
+        controller.show(
+          const DynamicNotification(title: 'Cancel Morph', duration: null),
+        );
+        await tester.pumpAndSettle();
 
-      final gesture = await tester.startGesture(
-        tester.getCenter(find.text('Cancel Morph')),
-      );
-      await gesture.moveBy(const Offset(0, -35));
-      await tester.pump();
-      expect(controller.dragOffset, -35.0);
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.text('Cancel Morph')),
+        );
+        await gesture.moveBy(const Offset(0, -35));
+        await tester.pump();
+        expect(controller.dragOffset, -35.0);
 
-      await gesture.cancel();
-      await tester.pump();
-      expect(controller.interactionState, NotificationInteractionState.returning);
+        await gesture.cancel();
+        await tester.pump();
+        expect(
+          controller.interactionState,
+          NotificationInteractionState.returning,
+        );
 
-      await tester.pumpAndSettle();
-      expect(controller.interactionState, NotificationInteractionState.idle);
-      expect(controller.dragOffset, 0.0);
-      expect(find.text('Cancel Morph'), findsOneWidget);
-    });
+        await tester.pumpAndSettle();
+        expect(controller.interactionState, NotificationInteractionState.idle);
+        expect(controller.dragOffset, 0.0);
+        expect(find.text('Cancel Morph'), findsOneWidget);
+      },
+    );
 
-    testWidgets('11. No detached text: text stays strictly inside card bounds throughout morph', (tester) async {
-      await mount(tester);
-      controller.show(
-        const DynamicNotification(
-          title: 'Attached Content Morph',
-          message: 'Guaranteed no floating text',
-          duration: null,
-        ),
-      );
-      await tester.pumpAndSettle();
+    testWidgets(
+      '11. No detached text: text stays strictly inside card bounds throughout morph',
+      (tester) async {
+        await mount(tester);
+        controller.show(
+          const DynamicNotification(
+            title: 'Attached Content Morph',
+            message: 'Guaranteed no floating text',
+            duration: null,
+          ),
+        );
+        await tester.pumpAndSettle();
 
-      final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
-      final initialShapeRect = tester.getRect(shape);
-      final textRect = tester.getRect(find.text('Attached Content Morph'));
+        final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+        final initialShapeRect = tester.getRect(shape);
+        final textRect = tester.getRect(find.text('Attached Content Morph'));
 
-      expect(textRect.top, greaterThanOrEqualTo(initialShapeRect.top));
-      expect(textRect.bottom, lessThanOrEqualTo(initialShapeRect.bottom));
+        expect(textRect.top, greaterThanOrEqualTo(initialShapeRect.top));
+        expect(textRect.bottom, lessThanOrEqualTo(initialShapeRect.bottom));
 
-      // Drag upward -20px (morphProgress = 0.25)
-      final gesture = await tester.startGesture(
-        tester.getCenter(find.text('Attached Content Morph')),
-      );
-      await gesture.moveBy(const Offset(0, -20));
-      await tester.pump();
+        // Drag upward -20px (morphProgress = 0.25)
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.text('Attached Content Morph')),
+        );
+        await gesture.moveBy(const Offset(0, -20));
+        await tester.pump();
 
-      // At -20px, upward drag scrubs morph while text stays anchored
-      final draggedTextRect = tester.getRect(find.text('Attached Content Morph'));
-      expect(draggedTextRect.center.dy, closeTo(textRect.center.dy, 1.0));
+        // At -20px, upward drag scrubs morph while text stays anchored
+        final draggedTextRect = tester.getRect(
+          find.text('Attached Content Morph'),
+        );
+        expect(draggedTextRect.center.dy, closeTo(textRect.center.dy, 1.0));
 
-      // Drag to -45px (morphProgress = 0.56, opacity becomes 0.0)
-      await gesture.moveBy(const Offset(0, -25));
-      await tester.pump();
-      expect(find.text('Attached Content Morph').hitTestable(), findsNothing);
+        // Drag to -45px (morphProgress = 0.56, opacity becomes 0.0)
+        await gesture.moveBy(const Offset(0, -25));
+        await tester.pump();
+        expect(find.text('Attached Content Morph').hitTestable(), findsNothing);
 
-      await gesture.up();
-      await tester.pumpAndSettle();
-    });
+        await gesture.up();
+        await tester.pumpAndSettle();
+      },
+    );
 
-    testWidgets('12. Background remains attached during morph at multiple progress steps', (tester) async {
-      await mount(tester);
-      controller.show(
-        const DynamicNotification(
-          title: 'Background Attachment',
-          message: 'Continuous surface',
-          duration: null,
-        ),
-      );
-      await tester.pumpAndSettle();
+    testWidgets(
+      '12. Background remains attached during morph at multiple progress steps',
+      (tester) async {
+        await mount(tester);
+        controller.show(
+          const DynamicNotification(
+            title: 'Background Attachment',
+            message: 'Continuous surface',
+            duration: null,
+          ),
+        );
+        await tester.pumpAndSettle();
 
-      final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
-      final shapeSize = tester.getSize(shape);
-      final center = shapeSize.width / 2;
+        final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+        final shapeSize = tester.getSize(shape);
+        final center = shapeSize.width / 2;
 
-      final gesture = await tester.startGesture(
-        tester.getCenter(find.text('Background Attachment')),
-      );
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.text('Background Attachment')),
+        );
 
-      // Step at -20px
-      await gesture.moveBy(const Offset(0, -20));
-      await tester.pump();
-      expect(
-        shape,
-        paints..path(
-          color: Colors.white,
-          includes: [Offset(center, shapeSize.height / 2)],
-        ),
-      );
+        // Step at -20px
+        await gesture.moveBy(const Offset(0, -20));
+        await tester.pump();
+        expect(
+          shape,
+          paints..path(
+            color: Colors.white,
+            includes: [Offset(center, shapeSize.height / 2)],
+          ),
+        );
 
-      // Step at -35px
-      await gesture.moveBy(const Offset(0, -15));
-      await tester.pump();
-      expect(
-        shape,
-        paints..path(
-          color: Colors.white,
-          includes: [Offset(center, shapeSize.height / 2)],
-        ),
-      );
+        // Step at -35px
+        await gesture.moveBy(const Offset(0, -15));
+        await tester.pump();
+        expect(
+          shape,
+          paints..path(
+            color: Colors.white,
+            includes: [Offset(center, shapeSize.height / 2)],
+          ),
+        );
 
-      await gesture.up();
-      await tester.pumpAndSettle();
-    });
+        await gesture.up();
+        await tester.pumpAndSettle();
+      },
+    );
 
-    testWidgets('13. Dismissal does not trigger onTap open callback', (tester) async {
+    testWidgets('13. Dismissal does not trigger onTap open callback', (
+      tester,
+    ) async {
       await mount(tester);
       var openCalls = 0;
       controller.show(
@@ -2081,35 +2124,43 @@ void main() {
       expect(find.text('Dismissal No Open'), findsNothing);
     });
 
-    testWidgets('14. Downward open behavior remains completely intact with reverse morph enabled', (tester) async {
-      await mount(tester);
-      var openCalls = 0;
-      controller.show(
-        DynamicNotification(
-          title: 'Downward Open Intact',
-          duration: null,
-          onTap: () => openCalls++,
-        ),
-      );
-      await tester.pumpAndSettle();
+    testWidgets(
+      '14. Downward open behavior remains completely intact with reverse morph enabled',
+      (tester) async {
+        await mount(tester);
+        var openCalls = 0;
+        controller.show(
+          DynamicNotification(
+            title: 'Downward Open Intact',
+            duration: null,
+            onTap: () => openCalls++,
+          ),
+        );
+        await tester.pumpAndSettle();
 
-      final gesture = await tester.startGesture(
-        tester.getCenter(find.text('Downward Open Intact')),
-      );
-      await gesture.moveBy(const Offset(0, 50));
-      await tester.pump();
-      expect(controller.dragOffset, 50.0);
-      expect(controller.morphProgress, 0.0);
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.text('Downward Open Intact')),
+        );
+        await gesture.moveBy(const Offset(0, 50));
+        await tester.pump();
+        expect(controller.dragOffset, 50.0);
+        expect(controller.morphProgress, 0.0);
 
-      await gesture.up();
-      expect(controller.interactionState, NotificationInteractionState.opening);
-      await tester.pumpAndSettle();
+        await gesture.up();
+        expect(
+          controller.interactionState,
+          NotificationInteractionState.opening,
+        );
+        await tester.pumpAndSettle();
 
-      expect(openCalls, 1);
-      expect(find.text('Downward Open Intact'), findsNothing);
-    });
+        expect(openCalls, 1);
+        expect(find.text('Downward Open Intact'), findsNothing);
+      },
+    );
 
-    testWidgets('15. Tap-to-open remains completely intact without dragging', (tester) async {
+    testWidgets('15. Tap-to-open remains completely intact without dragging', (
+      tester,
+    ) async {
       await mount(tester);
       var openCalls = 0;
       controller.show(
@@ -2128,846 +2179,928 @@ void main() {
       expect(find.text('Tap Open Intact'), findsNothing);
     });
 
-    testWidgets('16. Long-press / hold behavior remains intact and pauses auto-dismiss timer', (tester) async {
-      await mount(tester);
-      var openCalls = 0;
-      controller.show(
-        DynamicNotification(
-          title: 'Hold Intact',
-          duration: const Duration(seconds: 1),
-          onTap: () => openCalls++,
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      final gesture = await tester.startGesture(
-        tester.getCenter(find.text('Hold Intact')),
-      );
-      expect(controller.interactionState, NotificationInteractionState.holding);
-
-      // Hold for 1500ms (exceeding 1000ms duration)
-      await tester.pump(const Duration(milliseconds: 1500));
-      expect(find.text('Hold Intact'), findsOneWidget); // Did not auto-dismiss!
-
-      // Release without moving: recognized as hold, does not trigger tap
-      await gesture.up();
-      await tester.pump();
-      expect(openCalls, 0);
-
-      // After release, remaining timer expires and dismisses
-      await tester.pump(const Duration(seconds: 2));
-      await tester.pumpAndSettle();
-      expect(find.text('Hold Intact'), findsNothing);
-    });
-
-    testWidgets('17. Notch geometry alignment on asymmetric off-center punch hole', (tester) async {
-      await mount(
-        tester,
-        platform: TargetPlatform.android,
-        padding: const EdgeInsets.only(top: 40, bottom: 20),
-        displayFeatures: const [
-          DisplayFeature(
-            bounds: Rect.fromLTWH(48, 8, 24, 24),
-            type: DisplayFeatureType.cutout,
-            state: DisplayFeatureState.unknown,
+    testWidgets(
+      '16. Long-press / hold behavior remains intact and pauses auto-dismiss timer',
+      (tester) async {
+        await mount(tester);
+        var openCalls = 0;
+        controller.show(
+          DynamicNotification(
+            title: 'Hold Intact',
+            duration: const Duration(seconds: 1),
+            onTap: () => openCalls++,
           ),
-        ],
-      );
-      controller.show(
-        const DynamicNotification(
-          title: 'Off Center Notch',
-          message: 'Morph to camera at x=60',
-          duration: null,
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      final gesture = await tester.startGesture(
-        tester.getCenter(find.text('Off Center Notch')),
-      );
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.text('Hold Intact')),
+        );
+        expect(
+          controller.interactionState,
+          NotificationInteractionState.holding,
+        );
 
-      // Drag up by -50px
-      await gesture.moveBy(const Offset(0, -50));
-      await tester.pump();
+        // Hold for 1500ms (exceeding 1000ms duration)
+        await tester.pump(const Duration(milliseconds: 1500));
+        expect(
+          find.text('Hold Intact'),
+          findsOneWidget,
+        ); // Did not auto-dismiss!
 
-      expect(controller.morphProgress, closeTo(50.0 / 80.0, 0.01));
+        // Release without moving: recognized as hold, does not trigger tap
+        await gesture.up();
+        await tester.pump();
+        expect(openCalls, 0);
 
-      final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
-      expect(shape, findsOneWidget);
+        // After release, remaining timer expires and dismisses
+        await tester.pump(const Duration(seconds: 2));
+        await tester.pumpAndSettle();
+        expect(find.text('Hold Intact'), findsNothing);
+      },
+    );
 
-      await gesture.up();
-      await tester.pumpAndSettle();
-    });
-
-    testWidgets('18. iOS safe-area fallback geometry handles reverse morph smoothly', (tester) async {
-      await mount(
-        tester,
-        padding: const EdgeInsets.only(top: 48),
-      );
-      controller.show(
-        const DynamicNotification(
-          title: 'iOS Fallback Morph',
-          duration: null,
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      final gesture = await tester.startGesture(
-        tester.getCenter(find.text('iOS Fallback Morph')),
-      );
-      await gesture.moveBy(const Offset(0, -45));
-      await tester.pump();
-
-      expect(controller.morphProgress, closeTo(45.0 / 80.0, 0.01));
-      await gesture.up();
-      await tester.pumpAndSettle();
-
-      expect(find.text('iOS Fallback Morph'), findsNothing);
-    });
-
-    testWidgets('19. Droplet organic silhouette verification: pinched liquid waist and continuous contour', (tester) async {
-      // Screen width 800 in default test environment; center cutout at x = 388 (width 24 -> center 400)
-      await mount(
-        tester,
-        platform: TargetPlatform.android,
-        padding: const EdgeInsets.only(top: 44),
-        displayFeatures: const [
-          DisplayFeature(
-            bounds: Rect.fromLTWH(388, 10, 24, 24),
-            type: DisplayFeatureType.cutout,
-            state: DisplayFeatureState.unknown,
+    testWidgets(
+      '17. Notch geometry alignment on asymmetric off-center punch hole',
+      (tester) async {
+        await mount(
+          tester,
+          platform: TargetPlatform.android,
+          padding: const EdgeInsets.only(top: 40, bottom: 20),
+          displayFeatures: const [
+            DisplayFeature(
+              bounds: Rect.fromLTWH(48, 8, 24, 24),
+              type: DisplayFeatureType.cutout,
+              state: DisplayFeatureState.unknown,
+            ),
+          ],
+        );
+        controller.show(
+          const DynamicNotification(
+            title: 'Off Center Notch',
+            message: 'Morph to camera at x=60',
+            duration: null,
           ),
-        ],
-      );
-      controller.show(
-        const DynamicNotification(
-          title: 'Liquid Droplet Morph',
-          message: 'Pendant droplet formation',
-          duration: null,
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
-      final shapeSize = tester.getSize(shape);
-      final center = shapeSize.width / 2;
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.text('Off Center Notch')),
+        );
 
-      // Drag upward -60px (progress = 0.25 <= 0.28, morphProgress == 0.75)
-      final gesture = await tester.startGesture(
-        tester.getCenter(find.text('Liquid Droplet Morph')),
-      );
-      await gesture.moveBy(const Offset(0, -60));
-      await tester.pump();
+        // Drag up by -50px
+        await gesture.moveBy(const Offset(0, -50));
+        await tester.pump();
 
-      expect(controller.morphProgress, closeTo(0.75, 0.01));
+        expect(controller.morphProgress, closeTo(50.0 / 80.0, 0.01));
 
-      // At progress <= 0.28, the entrance neck and droplet are attached to the cutout
-      expect(
-        shape,
-        paints..path(
-          includes: [
-            Offset(center, 0.0), // Inside aperture contact
-            Offset(center, 12.0), // Neck / waist center
+        final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+        expect(shape, findsOneWidget);
+
+        await gesture.up();
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets(
+      '18. iOS safe-area fallback geometry handles reverse morph smoothly',
+      (tester) async {
+        await mount(tester, padding: const EdgeInsets.only(top: 48));
+        controller.show(
+          const DynamicNotification(
+            title: 'iOS Fallback Morph',
+            duration: null,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.text('iOS Fallback Morph')),
+        );
+        await gesture.moveBy(const Offset(0, -45));
+        await tester.pump();
+
+        expect(controller.morphProgress, closeTo(45.0 / 80.0, 0.01));
+        await gesture.up();
+        await tester.pumpAndSettle();
+
+        expect(find.text('iOS Fallback Morph'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      '19. Droplet organic silhouette verification: pinched liquid waist and continuous contour',
+      (tester) async {
+        // Screen width 800 in default test environment; center cutout at x = 388 (width 24 -> center 400)
+        await mount(
+          tester,
+          platform: TargetPlatform.android,
+          padding: const EdgeInsets.only(top: 44),
+          displayFeatures: const [
+            DisplayFeature(
+              bounds: Rect.fromLTWH(388, 10, 24, 24),
+              type: DisplayFeatureType.cutout,
+              state: DisplayFeatureState.unknown,
+            ),
           ],
-          excludes: [
-            Offset(center - 80.0, 12.0), // Outside lateral neck
-            Offset(center + 80.0, 12.0),
-          ],
-        ),
-      );
+        );
+        controller.show(
+          const DynamicNotification(
+            title: 'Liquid Droplet Morph',
+            message: 'Pendant droplet formation',
+            duration: null,
+          ),
+        );
+        await tester.pumpAndSettle();
 
-      await gesture.up();
-      await tester.pumpAndSettle();
-    });
+        final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+        final shapeSize = tester.getSize(shape);
+        final center = shapeSize.width / 2;
 
-    testWidgets('20. Exact Reverse Playback: entrance and dismissal produce identical geometry at matching progress values', (tester) async {
-      final entranceBounds = <double, Rect>{};
-      final dismissalBounds = <double, Rect>{};
+        // Drag upward -60px (progress = 0.25 <= 0.28, morphProgress == 0.75)
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.text('Liquid Droplet Morph')),
+        );
+        await gesture.moveBy(const Offset(0, -60));
+        await tester.pump();
 
-      for (final p in [0.25, 0.50, 0.75]) {
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: MediaQuery(
-                data: const MediaQueryData(padding: EdgeInsets.only(top: 40)),
-                child: DynamicNotifications(
-                  controller: DynamicNotificationController(),
-                  progressOverride: p,
-                  child: const SizedBox.expand(),
+        expect(controller.morphProgress, closeTo(0.75, 0.01));
+
+        // At progress <= 0.28, the entrance neck and droplet are attached to the cutout
+        expect(
+          shape,
+          paints..path(
+            includes: [
+              Offset(center, 0.0), // Inside aperture contact
+              Offset(center, 12.0), // Neck / waist center
+            ],
+            excludes: [
+              Offset(center - 80.0, 12.0), // Outside lateral neck
+              Offset(center + 80.0, 12.0),
+            ],
+          ),
+        );
+
+        await gesture.up();
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets(
+      '20. Exact Reverse Playback: entrance and dismissal produce identical geometry at matching progress values',
+      (tester) async {
+        final entranceBounds = <double, Rect>{};
+        final dismissalBounds = <double, Rect>{};
+
+        for (final p in [0.25, 0.50, 0.75]) {
+          await tester.pumpWidget(
+            MaterialApp(
+              home: Scaffold(
+                body: MediaQuery(
+                  data: const MediaQueryData(padding: EdgeInsets.only(top: 40)),
+                  child: DynamicNotifications(
+                    controller: DynamicNotificationController(),
+                    progressOverride: p,
+                    child: const SizedBox.expand(),
+                  ),
                 ),
               ),
             ),
+          );
+          final shape = find.byKey(
+            const ValueKey('dynamic-notification-shape'),
+          );
+          expect(
+            shape,
+            paints..something((Symbol method, List<dynamic> args) {
+              if (method == #drawPath) {
+                final path = args[0] as Path;
+                entranceBounds[p] = path.getBounds();
+                return true;
+              }
+              return false;
+            }),
+          );
+        }
+
+        // Now test during reverse dismissal
+        await mount(tester, padding: const EdgeInsets.only(top: 40));
+        controller.show(
+          const DynamicNotification(
+            title: 'Exact Reverse Test',
+            message: 'Geometry Verification',
+            duration: null,
           ),
         );
+        await tester.pumpAndSettle();
+
+        // Trigger dismissal
+        controller.dismiss();
+        await tester
+            .pump(); // Starts reverse animation (reverseDuration is 640ms)
+
+        // At t = 160ms (25% elapsed of 640ms), progress is exactly 0.75
+        await tester.pump(const Duration(milliseconds: 160));
+        var shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+        expect(
+          shape,
+          paints..something((Symbol method, List<dynamic> args) {
+            if (method == #drawPath) {
+              final path = args[0] as Path;
+              dismissalBounds[0.75] = path.getBounds();
+              return true;
+            }
+            return false;
+          }),
+        );
+
+        // At t = 160ms more (320ms elapsed = 50%), progress is exactly 0.50
+        await tester.pump(const Duration(milliseconds: 160));
+        shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+        expect(
+          shape,
+          paints..something((Symbol method, List<dynamic> args) {
+            if (method == #drawPath) {
+              final path = args[0] as Path;
+              dismissalBounds[0.50] = path.getBounds();
+              return true;
+            }
+            return false;
+          }),
+        );
+
+        // At t = 160ms more (480ms elapsed = 75%), progress is exactly 0.25
+        await tester.pump(const Duration(milliseconds: 160));
+        shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+        expect(
+          shape,
+          paints..something((Symbol method, List<dynamic> args) {
+            if (method == #drawPath) {
+              final path = args[0] as Path;
+              dismissalBounds[0.25] = path.getBounds();
+              return true;
+            }
+            return false;
+          }),
+        );
+
+        await tester.pumpAndSettle();
+
+        // Verify entrance and dismissal paths have identical geometry at each progress step
+        for (final p in [0.25, 0.50, 0.75]) {
+          final eb = entranceBounds[p]!;
+          final db = dismissalBounds[p]!;
+          expect(
+            db.left,
+            closeTo(eb.left, 0.05),
+            reason: 'Mismatch in left at progress $p',
+          );
+          expect(
+            db.top,
+            closeTo(eb.top, 0.05),
+            reason: 'Mismatch in top at progress $p',
+          );
+          expect(
+            db.right,
+            closeTo(eb.right, 0.05),
+            reason: 'Mismatch in right at progress $p',
+          );
+          expect(
+            db.bottom,
+            closeTo(eb.bottom, 0.05),
+            reason: 'Mismatch in bottom at progress $p',
+          );
+        }
+      },
+    );
+
+    testWidgets(
+      '21. Interactive drag direction reversal retraces entrance forward and backward seamlessly',
+      (tester) async {
+        await mount(tester, padding: const EdgeInsets.only(top: 40));
+        controller.show(
+          const DynamicNotification(
+            title: 'Reversal Scrubbing',
+            message: 'Retracing timeline',
+            duration: null,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.text('Reversal Scrubbing')),
+        );
+
+        // Drag upward by -40px (scrubs timeline backward to progress 0.50, morphProgress 0.50)
+        await gesture.moveBy(const Offset(0, -40));
+        await tester.pump();
+        expect(controller.morphProgress, closeTo(0.50, 0.01));
+        expect(controller.dragOffset, -40.0);
+
+        // Drag downward by +20px (reverses direction immediately, retracing forward to progress 0.75, morphProgress 0.25)
+        await gesture.moveBy(const Offset(0, 20));
+        await tester.pump();
+        expect(controller.morphProgress, closeTo(0.25, 0.01));
+        expect(controller.dragOffset, -20.0);
+
+        // Drag back downward by +20px to return to rest (progress 1.0, morphProgress 0.0)
+        await gesture.moveBy(const Offset(0, 20));
+        await tester.pump();
+        expect(controller.morphProgress, closeTo(0.0, 0.01));
+        expect(controller.dragOffset, 0.0);
+
+        // Release at rest
+        await gesture.up();
+        await tester.pumpAndSettle();
+        expect(find.text('Reversal Scrubbing'), findsOneWidget);
+        expect(controller.interactionState, NotificationInteractionState.idle);
+      },
+    );
+
+    testWidgets(
+      '22. Duplicate dismissal callback protection during rapid or repeated gesture inputs',
+      (tester) async {
+        await mount(tester);
+        var dismissCount = 0;
+        controller.show(
+          DynamicNotification(
+            title: 'Duplicate Callback Guard',
+            duration: null,
+            onTap: () {},
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Trigger dismissal via upward flick
+        await tester.fling(
+          find.text('Duplicate Callback Guard'),
+          const Offset(0, -60),
+          800.0,
+        );
+        await tester.pump();
+
+        // Attempt redundant dismiss calls during exit animation
+        controller.dismiss();
+        controller.dismiss();
+
+        await tester.pumpAndSettle();
+
+        expect(find.text('Duplicate Callback Guard'), findsNothing);
+        expect(controller.interactionState, NotificationInteractionState.idle);
+        expect(dismissCount, 0); // No tap open fired
+      },
+    );
+
+    testWidgets(
+      '23. No frame discontinuity on gesture release: bounds match continuously before and after release without jumping',
+      (tester) async {
+        await mount(tester, padding: const EdgeInsets.only(top: 40));
+        controller.show(
+          const DynamicNotification(
+            title: 'Discontinuity Check',
+            message: 'Zero jump test',
+            duration: null,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.text('Discontinuity Check')),
+        );
+        // Drag past dismiss threshold (-40px)
+        await gesture.moveBy(const Offset(0, -40));
+        await tester.pump();
+
+        // Capture geometry bounds before release
+        Rect? boundsBeforeRelease;
         final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
         expect(
           shape,
           paints..something((Symbol method, List<dynamic> args) {
             if (method == #drawPath) {
               final path = args[0] as Path;
-              entranceBounds[p] = path.getBounds();
+              boundsBeforeRelease = path.getBounds();
               return true;
             }
             return false;
           }),
         );
-      }
+        expect(boundsBeforeRelease, isNotNull);
 
-      // Now test during reverse dismissal
-      await mount(tester, padding: const EdgeInsets.only(top: 40));
-      controller.show(
-        const DynamicNotification(
-          title: 'Exact Reverse Test',
-          message: 'Geometry Verification',
-          duration: null,
-        ),
-      );
-      await tester.pumpAndSettle();
+        // Release pointer (triggers _exit() with reverse animation)
+        await gesture.up();
+        // Pump immediate next frame (t=0 of exit)
+        await tester.pump();
 
-      // Trigger dismissal
-      controller.dismiss();
-      await tester.pump(); // Starts reverse animation (reverseDuration is 640ms)
+        Rect? boundsAfterRelease;
+        expect(
+          shape,
+          paints..something((Symbol method, List<dynamic> args) {
+            if (method == #drawPath) {
+              final path = args[0] as Path;
+              boundsAfterRelease = path.getBounds();
+              return true;
+            }
+            return false;
+          }),
+        );
+        expect(boundsAfterRelease, isNotNull);
 
-      // At t = 160ms (25% elapsed of 640ms), progress is exactly 0.75
-      await tester.pump(const Duration(milliseconds: 160));
-      var shape = find.byKey(const ValueKey('dynamic-notification-shape'));
-      expect(
-        shape,
-        paints..something((Symbol method, List<dynamic> args) {
-          if (method == #drawPath) {
-            final path = args[0] as Path;
-            dismissalBounds[0.75] = path.getBounds();
-            return true;
-          }
-          return false;
-        }),
-      );
+        // Verify that top and bottom are continuous (no teleportation/jump)
+        expect(boundsAfterRelease!.top, closeTo(boundsBeforeRelease!.top, 1.5));
+        expect(
+          boundsAfterRelease!.bottom,
+          closeTo(boundsBeforeRelease!.bottom, 1.5),
+        );
 
-      // At t = 160ms more (320ms elapsed = 50%), progress is exactly 0.50
-      await tester.pump(const Duration(milliseconds: 160));
-      shape = find.byKey(const ValueKey('dynamic-notification-shape'));
-      expect(
-        shape,
-        paints..something((Symbol method, List<dynamic> args) {
-          if (method == #drawPath) {
-            final path = args[0] as Path;
-            dismissalBounds[0.50] = path.getBounds();
-            return true;
-          }
-          return false;
-        }),
-      );
+        await tester.pumpAndSettle();
+        expect(find.text('Discontinuity Check'), findsNothing);
+      },
+    );
 
-      // At t = 160ms more (480ms elapsed = 75%), progress is exactly 0.25
-      await tester.pump(const Duration(milliseconds: 160));
-      shape = find.byKey(const ValueKey('dynamic-notification-shape'));
-      expect(
-        shape,
-        paints..something((Symbol method, List<dynamic> args) {
-          if (method == #drawPath) {
-            final path = args[0] as Path;
-            dismissalBounds[0.25] = path.getBounds();
-            return true;
-          }
-          return false;
-        }),
-      );
+    testWidgets(
+      '24. Test A: First notification entrance starts from compact droplet at notch and expands',
+      (tester) async {
+        await mount(
+          tester,
+          padding: const EdgeInsets.only(top: 40),
+          displayFeatures: const [
+            DisplayFeature(
+              bounds: Rect.fromLTWH(388, 8, 24, 24),
+              type: DisplayFeatureType.cutout,
+              state: DisplayFeatureState.unknown,
+            ),
+          ],
+        );
 
-      await tester.pumpAndSettle();
-
-      // Verify entrance and dismissal paths have identical geometry at each progress step
-      for (final p in [0.25, 0.50, 0.75]) {
-        final eb = entranceBounds[p]!;
-        final db = dismissalBounds[p]!;
-        expect(db.left, closeTo(eb.left, 0.05), reason: 'Mismatch in left at progress $p');
-        expect(db.top, closeTo(eb.top, 0.05), reason: 'Mismatch in top at progress $p');
-        expect(db.right, closeTo(eb.right, 0.05), reason: 'Mismatch in right at progress $p');
-        expect(db.bottom, closeTo(eb.bottom, 0.05), reason: 'Mismatch in bottom at progress $p');
-      }
-    });
-
-
-    testWidgets('21. Interactive drag direction reversal retraces entrance forward and backward seamlessly', (tester) async {
-      await mount(tester, padding: const EdgeInsets.only(top: 40));
-      controller.show(
-        const DynamicNotification(
-          title: 'Reversal Scrubbing',
-          message: 'Retracing timeline',
-          duration: null,
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      final gesture = await tester.startGesture(
-        tester.getCenter(find.text('Reversal Scrubbing')),
-      );
-
-      // Drag upward by -40px (scrubs timeline backward to progress 0.50, morphProgress 0.50)
-      await gesture.moveBy(const Offset(0, -40));
-      await tester.pump();
-      expect(controller.morphProgress, closeTo(0.50, 0.01));
-      expect(controller.dragOffset, -40.0);
-
-      // Drag downward by +20px (reverses direction immediately, retracing forward to progress 0.75, morphProgress 0.25)
-      await gesture.moveBy(const Offset(0, 20));
-      await tester.pump();
-      expect(controller.morphProgress, closeTo(0.25, 0.01));
-      expect(controller.dragOffset, -20.0);
-
-      // Drag back downward by +20px to return to rest (progress 1.0, morphProgress 0.0)
-      await gesture.moveBy(const Offset(0, 20));
-      await tester.pump();
-      expect(controller.morphProgress, closeTo(0.0, 0.01));
-      expect(controller.dragOffset, 0.0);
-
-      // Release at rest
-      await gesture.up();
-      await tester.pumpAndSettle();
-      expect(find.text('Reversal Scrubbing'), findsOneWidget);
-      expect(controller.interactionState, NotificationInteractionState.idle);
-    });
-
-    testWidgets('22. Duplicate dismissal callback protection during rapid or repeated gesture inputs', (tester) async {
-      await mount(tester);
-      var dismissCount = 0;
-      controller.show(
-        DynamicNotification(
-          title: 'Duplicate Callback Guard',
-          duration: null,
-          onTap: () {},
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      // Trigger dismissal via upward flick
-      await tester.fling(find.text('Duplicate Callback Guard'), const Offset(0, -60), 800.0);
-      await tester.pump();
-
-      // Attempt redundant dismiss calls during exit animation
-      controller.dismiss();
-      controller.dismiss();
-
-      await tester.pumpAndSettle();
-
-      expect(find.text('Duplicate Callback Guard'), findsNothing);
-      expect(controller.interactionState, NotificationInteractionState.idle);
-      expect(dismissCount, 0); // No tap open fired
-    });
-
-    testWidgets('23. No frame discontinuity on gesture release: bounds match continuously before and after release without jumping', (tester) async {
-      await mount(tester, padding: const EdgeInsets.only(top: 40));
-      controller.show(
-        const DynamicNotification(
-          title: 'Discontinuity Check',
-          message: 'Zero jump test',
-          duration: null,
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      final gesture = await tester.startGesture(
-        tester.getCenter(find.text('Discontinuity Check')),
-      );
-      // Drag past dismiss threshold (-40px)
-      await gesture.moveBy(const Offset(0, -40));
-      await tester.pump();
-
-      // Capture geometry bounds before release
-      Rect? boundsBeforeRelease;
-      final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
-      expect(
-        shape,
-        paints..something((Symbol method, List<dynamic> args) {
-          if (method == #drawPath) {
-            final path = args[0] as Path;
-            boundsBeforeRelease = path.getBounds();
-            return true;
-          }
-          return false;
-        }),
-      );
-      expect(boundsBeforeRelease, isNotNull);
-
-      // Release pointer (triggers _exit() with reverse animation)
-      await gesture.up();
-      // Pump immediate next frame (t=0 of exit)
-      await tester.pump();
-
-      Rect? boundsAfterRelease;
-      expect(
-        shape,
-        paints..something((Symbol method, List<dynamic> args) {
-          if (method == #drawPath) {
-            final path = args[0] as Path;
-            boundsAfterRelease = path.getBounds();
-            return true;
-          }
-          return false;
-        }),
-      );
-      expect(boundsAfterRelease, isNotNull);
-
-      // Verify that top and bottom are continuous (no teleportation/jump)
-      expect(boundsAfterRelease!.top, closeTo(boundsBeforeRelease!.top, 1.5));
-      expect(boundsAfterRelease!.bottom, closeTo(boundsBeforeRelease!.bottom, 1.5));
-
-      await tester.pumpAndSettle();
-      expect(find.text('Discontinuity Check'), findsNothing);
-    });
-
-    testWidgets('24. Test A: First notification entrance starts from compact droplet at notch and expands', (tester) async {
-      await mount(
-        tester,
-        padding: const EdgeInsets.only(top: 40),
-        displayFeatures: const [
-          DisplayFeature(
-            bounds: Rect.fromLTWH(388, 8, 24, 24),
-            type: DisplayFeatureType.cutout,
-            state: DisplayFeatureState.unknown,
-          ),
-        ],
-      );
-
-      controller.show(
-        const DynamicNotification(
-          title: 'Notification A',
-          message: 'Droplet entrance verification',
-          duration: null,
-        ),
-      );
-      // Initial frame: progress is 0.0, droplet inside notch
-      await tester.pump();
-      expect(controller.morphProgress, 1.0); // fully in notch
-      expect(find.text('Notification A').hitTestable(), findsNothing);
-
-      // Advance 50ms: droplet emerges from notch
-      await tester.pump(const Duration(milliseconds: 50));
-      final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
-      Rect? initialBounds;
-      expect(
-        shape,
-        paints..something((Symbol method, List<dynamic> args) {
-          if (method == #drawPath) {
-            initialBounds = (args[0] as Path).getBounds();
-            return true;
-          }
-          return false;
-        }),
-      );
-      expect(initialBounds, isNotNull);
-      // Compact droplet width at notch is < 30px
-      expect(initialBounds!.width, lessThan(30.0));
-      expect(find.text('Notification A').hitTestable(), findsNothing);
-
-      // Advance animation partially: 150ms
-      await tester.pump(const Duration(milliseconds: 150));
-      Rect? intermediateBounds;
-      expect(
-        shape,
-        paints..something((Symbol method, List<dynamic> args) {
-          if (method == #drawPath) {
-            intermediateBounds = (args[0] as Path).getBounds();
-            return true;
-          }
-          return false;
-        }),
-      );
-      expect(intermediateBounds, isNotNull);
-      // Intermediate state: stretching droplet, still narrow compared to full card
-      expect(intermediateBounds!.width, lessThan(60.0));
-      expect(intermediateBounds!.height, greaterThan(initialBounds!.height));
-
-      // Advance to full completion
-      await tester.pumpAndSettle();
-      Rect? completedBounds;
-      expect(
-        shape,
-        paints..something((Symbol method, List<dynamic> args) {
-          if (method == #drawPath) {
-            completedBounds = (args[0] as Path).getBounds();
-            return true;
-          }
-          return false;
-        }),
-      );
-      expect(completedBounds, isNotNull);
-      // Fully expanded card: width > 300px
-      expect(completedBounds!.width, greaterThan(300.0));
-      expect(find.text('Notification A').hitTestable(), findsOneWidget);
-      expect(controller.morphProgress, 0.0);
-    });
-
-    testWidgets('25. Test B: Hold notification 1, return to rest, trigger notification 2: starts from droplet initial state and does not appear fully expanded immediately', (tester) async {
-      await mount(
-        tester,
-        padding: const EdgeInsets.only(top: 40),
-        displayFeatures: const [
-          DisplayFeature(
-            bounds: Rect.fromLTWH(388, 8, 24, 24),
-            type: DisplayFeatureType.cutout,
-            state: DisplayFeatureState.unknown,
-          ),
-        ],
-      );
-
-      // 1. Show notification 1 and expand fully
-      controller.show(
-        const DynamicNotification(
-          title: 'Notification B1',
-          duration: null,
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(find.text('Notification B1'), findsOneWidget);
-
-      // 2. Hold notification 1
-      final gesture = await tester.startGesture(tester.getCenter(find.text('Notification B1')));
-      expect(controller.interactionState, NotificationInteractionState.holding);
-      await tester.pump(const Duration(milliseconds: 600));
-
-      // 3. Return to rest without dragging
-      await gesture.up();
-      await tester.pumpAndSettle();
-      expect(controller.interactionState, NotificationInteractionState.idle);
-
-      // 4. Trigger notification 2
-      controller.show(
-        const DynamicNotification(
-          title: 'Notification B2',
-          duration: null,
-        ),
-      );
-
-      // Pump until Notification B1 finishes reverse exit and Notification B2 starts
-      while (controller.currentNotification?.title == 'Notification B1') {
-        await tester.pump(const Duration(milliseconds: 40));
-      }
-
-      // VERIFY: Notification B2 is active and starts at droplet initial state (morphProgress 1.0)
-      expect(controller.currentNotification?.title, 'Notification B2');
-      expect(controller.morphProgress, 1.0);
-      expect(find.text('Notification B2').hitTestable(), findsNothing);
-
-      // Advance 50ms: droplet emerges from notch
-      await tester.pump(const Duration(milliseconds: 50));
-      final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
-      Rect? n2InitialBounds;
-      expect(
-        shape,
-        paints..something((Symbol method, List<dynamic> args) {
-          if (method == #drawPath) {
-            n2InitialBounds = (args[0] as Path).getBounds();
-            return true;
-          }
-          return false;
-        }),
-      );
-      expect(n2InitialBounds, isNotNull);
-      // Droplet initial width must be < 30px, NOT fully expanded card (> 300px)
-      expect(n2InitialBounds!.width, lessThan(30.0));
-      expect(find.text('Notification B2').hitTestable(), findsNothing);
-
-      // Complete entrance
-      await tester.pumpAndSettle();
-      expect(find.text('Notification B2').hitTestable(), findsOneWidget);
-      expect(controller.morphProgress, 0.0);
-    });
-
-    testWidgets('26. Test C: Complete notification 1, trigger notification 2: fresh entrance animation', (tester) async {
-      await mount(tester, padding: const EdgeInsets.only(top: 40));
-
-      // Show notification 1 and dismiss it completely
-      controller.show(
-        const DynamicNotification(
-          title: 'Notification C1',
-          duration: null,
-        ),
-      );
-      await tester.pumpAndSettle();
-      controller.dismiss();
-      await tester.pumpAndSettle();
-      expect(find.text('Notification C1'), findsNothing);
-
-      // Trigger notification 2
-      controller.show(
-        const DynamicNotification(
-          title: 'Notification C2',
-          duration: null,
-        ),
-      );
-      await tester.pump(); // t=0 frame
-
-      expect(controller.morphProgress, 1.0);
-      expect(find.text('Notification C2').hitTestable(), findsNothing);
-
-      // Advance 50ms: droplet emerges
-      await tester.pump(const Duration(milliseconds: 50));
-      final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
-      Rect? c2Bounds;
-      expect(
-        shape,
-        paints..something((Symbol method, List<dynamic> args) {
-          if (method == #drawPath) {
-            c2Bounds = (args[0] as Path).getBounds();
-            return true;
-          }
-          return false;
-        }),
-      );
-      expect(c2Bounds, isNotNull);
-      expect(c2Bounds!.width, lessThan(30.0));
-      expect(find.text('Notification C2').hitTestable(), findsNothing);
-
-      await tester.pumpAndSettle();
-      expect(find.text('Notification C2').hitTestable(), findsOneWidget);
-      expect(controller.morphProgress, 0.0);
-    });
-
-    testWidgets('27. Test D: Trigger notifications 1, 2, and 3 sequentially: all three perform the same entrance sequence', (tester) async {
-      await mount(tester, padding: const EdgeInsets.only(top: 40));
-
-      for (var i = 1; i <= 3; i++) {
         controller.show(
-          DynamicNotification(
-            title: 'Sequential Notification $i',
+          const DynamicNotification(
+            title: 'Notification A',
+            message: 'Droplet entrance verification',
             duration: null,
           ),
         );
-        await tester.pump(); // t=0 frame
+        // Initial frame: progress is 0.0, droplet inside notch
+        await tester.pump();
+        expect(controller.morphProgress, 1.0); // fully in notch
+        expect(find.text('Notification A').hitTestable(), findsNothing);
+
+        // Advance 50ms: droplet emerges from notch
+        await tester.pump(const Duration(milliseconds: 50));
+        final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+        Rect? initialBounds;
+        expect(
+          shape,
+          paints..something((Symbol method, List<dynamic> args) {
+            if (method == #drawPath) {
+              initialBounds = (args[0] as Path).getBounds();
+              return true;
+            }
+            return false;
+          }),
+        );
+        expect(initialBounds, isNotNull);
+        // Compact droplet width at notch is < 30px
+        expect(initialBounds!.width, lessThan(30.0));
+        expect(find.text('Notification A').hitTestable(), findsNothing);
+
+        // Advance animation partially: 150ms
+        await tester.pump(const Duration(milliseconds: 150));
+        Rect? intermediateBounds;
+        expect(
+          shape,
+          paints..something((Symbol method, List<dynamic> args) {
+            if (method == #drawPath) {
+              intermediateBounds = (args[0] as Path).getBounds();
+              return true;
+            }
+            return false;
+          }),
+        );
+        expect(intermediateBounds, isNotNull);
+        // Intermediate state: stretching droplet, still narrow compared to full card
+        expect(intermediateBounds!.width, lessThan(60.0));
+        expect(intermediateBounds!.height, greaterThan(initialBounds!.height));
+
+        // Advance to full completion
+        await tester.pumpAndSettle();
+        Rect? completedBounds;
+        expect(
+          shape,
+          paints..something((Symbol method, List<dynamic> args) {
+            if (method == #drawPath) {
+              completedBounds = (args[0] as Path).getBounds();
+              return true;
+            }
+            return false;
+          }),
+        );
+        expect(completedBounds, isNotNull);
+        // Fully expanded card: width > 300px
+        expect(completedBounds!.width, greaterThan(300.0));
+        expect(find.text('Notification A').hitTestable(), findsOneWidget);
+        expect(controller.morphProgress, 0.0);
+      },
+    );
+
+    testWidgets(
+      '25. Test B: Hold notification 1, return to rest, trigger notification 2: starts from droplet initial state and does not appear fully expanded immediately',
+      (tester) async {
+        await mount(
+          tester,
+          padding: const EdgeInsets.only(top: 40),
+          displayFeatures: const [
+            DisplayFeature(
+              bounds: Rect.fromLTWH(388, 8, 24, 24),
+              type: DisplayFeatureType.cutout,
+              state: DisplayFeatureState.unknown,
+            ),
+          ],
+        );
+
+        // 1. Show notification 1 and expand fully
+        controller.show(
+          const DynamicNotification(title: 'Notification B1', duration: null),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Notification B1'), findsOneWidget);
+
+        // 2. Hold notification 1
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.text('Notification B1')),
+        );
+        expect(
+          controller.interactionState,
+          NotificationInteractionState.holding,
+        );
+        await tester.pump(const Duration(milliseconds: 600));
+
+        // 3. Return to rest without dragging
+        await gesture.up();
+        await tester.pumpAndSettle();
+        expect(controller.interactionState, NotificationInteractionState.idle);
+
+        // 4. Trigger notification 2
+        controller.show(
+          const DynamicNotification(title: 'Notification B2', duration: null),
+        );
+
+        // Pump until Notification B1 finishes reverse exit and Notification B2 starts
+        while (controller.currentNotification?.title == 'Notification B1') {
+          await tester.pump(const Duration(milliseconds: 40));
+        }
+
+        // VERIFY: Notification B2 is active and starts at droplet initial state (morphProgress 1.0)
+        expect(controller.currentNotification?.title, 'Notification B2');
         expect(controller.morphProgress, 1.0);
-        expect(find.text('Sequential Notification $i').hitTestable(), findsNothing);
+        expect(find.text('Notification B2').hitTestable(), findsNothing);
+
+        // Advance 50ms: droplet emerges from notch
+        await tester.pump(const Duration(milliseconds: 50));
+        final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+        Rect? n2InitialBounds;
+        expect(
+          shape,
+          paints..something((Symbol method, List<dynamic> args) {
+            if (method == #drawPath) {
+              n2InitialBounds = (args[0] as Path).getBounds();
+              return true;
+            }
+            return false;
+          }),
+        );
+        expect(n2InitialBounds, isNotNull);
+        // Droplet initial width must be < 30px, NOT fully expanded card (> 300px)
+        expect(n2InitialBounds!.width, lessThan(30.0));
+        expect(find.text('Notification B2').hitTestable(), findsNothing);
+
+        // Complete entrance
+        await tester.pumpAndSettle();
+        expect(find.text('Notification B2').hitTestable(), findsOneWidget);
+        expect(controller.morphProgress, 0.0);
+      },
+    );
+
+    testWidgets(
+      '26. Test C: Complete notification 1, trigger notification 2: fresh entrance animation',
+      (tester) async {
+        await mount(tester, padding: const EdgeInsets.only(top: 40));
+
+        // Show notification 1 and dismiss it completely
+        controller.show(
+          const DynamicNotification(title: 'Notification C1', duration: null),
+        );
+        await tester.pumpAndSettle();
+        controller.dismiss();
+        await tester.pumpAndSettle();
+        expect(find.text('Notification C1'), findsNothing);
+
+        // Trigger notification 2
+        controller.show(
+          const DynamicNotification(title: 'Notification C2', duration: null),
+        );
+        await tester.pump(); // t=0 frame
+
+        expect(controller.morphProgress, 1.0);
+        expect(find.text('Notification C2').hitTestable(), findsNothing);
 
         // Advance 50ms: droplet emerges
         await tester.pump(const Duration(milliseconds: 50));
         final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
-        Rect? bounds;
+        Rect? c2Bounds;
         expect(
           shape,
           paints..something((Symbol method, List<dynamic> args) {
             if (method == #drawPath) {
-              bounds = (args[0] as Path).getBounds();
+              c2Bounds = (args[0] as Path).getBounds();
               return true;
             }
             return false;
           }),
         );
-        expect(bounds, isNotNull);
-        expect(bounds!.width, lessThan(30.0), reason: 'Notification $i did not start as a compact droplet');
-        expect(find.text('Sequential Notification $i').hitTestable(), findsNothing);
+        expect(c2Bounds, isNotNull);
+        expect(c2Bounds!.width, lessThan(30.0));
+        expect(find.text('Notification C2').hitTestable(), findsNothing);
 
         await tester.pumpAndSettle();
-        expect(find.text('Sequential Notification $i').hitTestable(), findsOneWidget);
+        expect(find.text('Notification C2').hitTestable(), findsOneWidget);
         expect(controller.morphProgress, 0.0);
+      },
+    );
 
-        controller.dismiss();
-        await tester.pumpAndSettle();
-      }
-    });
+    testWidgets(
+      '27. Test D: Trigger notifications 1, 2, and 3 sequentially: all three perform the same entrance sequence',
+      (tester) async {
+        await mount(tester, padding: const EdgeInsets.only(top: 40));
 
-    testWidgets('28. Test E: Trigger a second notification while previous animation callback and timers are pending: stale callbacks cannot affect new notification', (tester) async {
-      await mount(tester, padding: const EdgeInsets.only(top: 40));
-
-      // Show notification 1 with auto-dismiss duration
-      controller.show(
-        const DynamicNotification(
-          title: 'Notification E1',
-          duration: Duration(seconds: 4),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      // Trigger a drag that causes spring-back to run
-      final gesture = await tester.startGesture(tester.getCenter(find.text('Notification E1')));
-      await gesture.moveBy(const Offset(0, -15));
-      await tester.pump();
-      await gesture.up(); // starts _springController (springBackDuration = 350ms)
-      await tester.pump(const Duration(milliseconds: 50)); // springController in flight
-
-      // While springController and auto-dismiss timer are both pending, trigger Notification E2
-      controller.show(
-        const DynamicNotification(
-          title: 'Notification E2',
-          duration: null,
-        ),
-      );
-
-      // Pump until Notification E1 finishes exit and Notification E2 starts
-      while (controller.currentNotification?.title == 'Notification E1') {
-        await tester.pump(const Duration(milliseconds: 40));
-      }
-
-      // Verify Notification E2 started fresh at droplet initial state (morphProgress 1.0)
-      expect(controller.currentNotification?.title, 'Notification E2');
-      expect(controller.morphProgress, 1.0);
-      expect(find.text('Notification E2').hitTestable(), findsNothing);
-
-      // Advance 50ms: droplet emerges
-      await tester.pump(const Duration(milliseconds: 50));
-      final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
-      Rect? e2Bounds;
-      expect(
-        shape,
-        paints..something((Symbol method, List<dynamic> args) {
-          if (method == #drawPath) {
-            e2Bounds = (args[0] as Path).getBounds();
-            return true;
-          }
-          return false;
-        }),
-      );
-      expect(e2Bounds, isNotNull);
-      expect(e2Bounds!.width, lessThan(30.0));
-
-      // Complete entrance
-      await tester.pumpAndSettle();
-      expect(find.text('Notification E2').hitTestable(), findsOneWidget);
-
-      // Advance by remaining time of the old 4s timer to prove old timer cannot dismiss Notification E2
-      await tester.pump(const Duration(seconds: 5));
-      expect(find.text('Notification E2'), findsOneWidget);
-    });
-
-    testWidgets('29. Test F: Entrance animation does not restart unexpectedly when unrelated widget properties update', (tester) async {
-      final testController = DynamicNotificationController();
-
-      Widget buildHarness({required Widget childWidget, required bool debugShowGuides}) {
-        return MaterialApp(
-          home: Scaffold(
-            body: MediaQuery(
-              data: const MediaQueryData(padding: EdgeInsets.only(top: 40)),
-              child: DynamicNotifications(
-                controller: testController,
-                debugShowGuides: debugShowGuides,
-                child: childWidget,
-              ),
+        for (var i = 1; i <= 3; i++) {
+          controller.show(
+            DynamicNotification(
+              title: 'Sequential Notification $i',
+              duration: null,
             ),
+          );
+          await tester.pump(); // t=0 frame
+          expect(controller.morphProgress, 1.0);
+          expect(
+            find.text('Sequential Notification $i').hitTestable(),
+            findsNothing,
+          );
+
+          // Advance 50ms: droplet emerges
+          await tester.pump(const Duration(milliseconds: 50));
+          final shape = find.byKey(
+            const ValueKey('dynamic-notification-shape'),
+          );
+          Rect? bounds;
+          expect(
+            shape,
+            paints..something((Symbol method, List<dynamic> args) {
+              if (method == #drawPath) {
+                bounds = (args[0] as Path).getBounds();
+                return true;
+              }
+              return false;
+            }),
+          );
+          expect(bounds, isNotNull);
+          expect(
+            bounds!.width,
+            lessThan(30.0),
+            reason: 'Notification $i did not start as a compact droplet',
+          );
+          expect(
+            find.text('Sequential Notification $i').hitTestable(),
+            findsNothing,
+          );
+
+          await tester.pumpAndSettle();
+          expect(
+            find.text('Sequential Notification $i').hitTestable(),
+            findsOneWidget,
+          );
+          expect(controller.morphProgress, 0.0);
+
+          controller.dismiss();
+          await tester.pumpAndSettle();
+        }
+      },
+    );
+
+    testWidgets(
+      '28. Test E: Trigger a second notification while previous animation callback and timers are pending: stale callbacks cannot affect new notification',
+      (tester) async {
+        await mount(tester, padding: const EdgeInsets.only(top: 40));
+
+        // Show notification 1 with auto-dismiss duration
+        controller.show(
+          const DynamicNotification(
+            title: 'Notification E1',
+            duration: Duration(seconds: 4),
           ),
         );
-      }
+        await tester.pumpAndSettle();
 
-      await tester.pumpWidget(buildHarness(childWidget: const Text('Child A'), debugShowGuides: false));
-      testController.show(
-        const DynamicNotification(
-          title: 'Notification F',
-          duration: null,
-        ),
-      );
-      await tester.pump(); // t=0 frame
+        // Trigger a drag that causes spring-back to run
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.text('Notification E1')),
+        );
+        await gesture.moveBy(const Offset(0, -15));
+        await tester.pump();
+        await gesture
+            .up(); // starts _springController (springBackDuration = 350ms)
+        await tester.pump(
+          const Duration(milliseconds: 50),
+        ); // springController in flight
 
-      // Advance to 390ms (50% of 780ms entrance animation)
-      await tester.pump(const Duration(milliseconds: 390));
-      final progressAtHalfway = testController.morphProgress;
-      expect(progressAtHalfway, closeTo(0.50, 0.05));
+        // While springController and auto-dismiss timer are both pending, trigger Notification E2
+        controller.show(
+          const DynamicNotification(title: 'Notification E2', duration: null),
+        );
 
-      // Rebuild with updated unrelated properties: different child and toggled debugShowGuides
-      await tester.pumpWidget(buildHarness(childWidget: const Text('Child B'), debugShowGuides: true));
-      await tester.pump();
+        // Pump until Notification E1 finishes exit and Notification E2 starts
+        while (controller.currentNotification?.title == 'Notification E1') {
+          await tester.pump(const Duration(milliseconds: 40));
+        }
 
-      // Verify entrance animation did NOT restart to 1.0 or jump to 0.0
-      expect(testController.morphProgress, closeTo(progressAtHalfway, 0.05));
+        // Verify Notification E2 started fresh at droplet initial state (morphProgress 1.0)
+        expect(controller.currentNotification?.title, 'Notification E2');
+        expect(controller.morphProgress, 1.0);
+        expect(find.text('Notification E2').hitTestable(), findsNothing);
 
-      // Complete entrance cleanly
-      await tester.pumpAndSettle();
-      expect(testController.morphProgress, 0.0);
-      expect(find.text('Notification F'), findsOneWidget);
-    });
+        // Advance 50ms: droplet emerges
+        await tester.pump(const Duration(milliseconds: 50));
+        final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
+        Rect? e2Bounds;
+        expect(
+          shape,
+          paints..something((Symbol method, List<dynamic> args) {
+            if (method == #drawPath) {
+              e2Bounds = (args[0] as Path).getBounds();
+              return true;
+            }
+            return false;
+          }),
+        );
+        expect(e2Bounds, isNotNull);
+        expect(e2Bounds!.width, lessThan(30.0));
+
+        // Complete entrance
+        await tester.pumpAndSettle();
+        expect(find.text('Notification E2').hitTestable(), findsOneWidget);
+
+        // Advance by remaining time of the old 4s timer to prove old timer cannot dismiss Notification E2
+        await tester.pump(const Duration(seconds: 5));
+        expect(find.text('Notification E2'), findsOneWidget);
+      },
+    );
   });
 
   group('Orientation-Independent Vertical Liquid Morph for Side and Corner Cutouts', () {
-    testWidgets('1. Top-center cutout: droplet emerges vertically downward (+Y) from actual cutout anchor', (tester) async {
-      tester.view.physicalSize = const Size(393, 852);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+    testWidgets(
+      '1. Top-center cutout: droplet emerges vertically downward (+Y) from actual cutout anchor',
+      (tester) async {
+        tester.view.physicalSize = const Size(393, 852);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
 
-      const topCenterGeo = NotchGeometry(
-        bounds: Rect.fromLTWH(184.5, 15, 24, 24),
-        center: Offset(196.5, 27),
-        width: 24,
-        height: 24,
-        top: 15,
-        bottom: 39,
-        screenSize: Size(393, 852),
-        insets: EdgeInsets.only(top: 48),
-        source: NotchGeometrySource.displayFeature,
-        confidence: NotchGeometryConfidence.exact,
-        shape: NotchShape.punchHole,
-        hasCutout: true,
-        edge: CutoutEdge.top,
-      );
+        const topCenterGeo = NotchGeometry(
+          bounds: Rect.fromLTWH(184.5, 15, 24, 24),
+          center: Offset(196.5, 27),
+          width: 24,
+          height: 24,
+          top: 15,
+          bottom: 39,
+          screenSize: Size(393, 852),
+          insets: EdgeInsets.only(top: 48),
+          source: NotchGeometrySource.displayFeature,
+          confidence: NotchGeometryConfidence.exact,
+          shape: NotchShape.punchHole,
+          hasCutout: true,
+          edge: CutoutEdge.top,
+        );
 
-      final ctrl = DynamicNotificationController();
+        final ctrl = DynamicNotificationController();
 
-      // Check multiple progress values during vertical emergence
-      for (final p in [0.10, 0.20, 0.28]) {
-        await tester.pumpWidget(
-          MaterialApp(
-            home: MediaQuery(
-              data: const MediaQueryData(
-                size: Size(393, 852),
-                viewPadding: EdgeInsets.only(top: 48),
-              ),
-              child: DynamicNotifications(
-                controller: ctrl,
-                geometryOverride: topCenterGeo,
-                progressOverride: p,
-                child: const SizedBox.expand(),
+        // Check multiple progress values during vertical emergence
+        for (final p in [0.10, 0.20, 0.28]) {
+          await tester.pumpWidget(
+            MaterialApp(
+              home: MediaQuery(
+                data: const MediaQueryData(
+                  size: Size(393, 852),
+                  viewPadding: EdgeInsets.only(top: 48),
+                ),
+                child: DynamicNotifications(
+                  controller: ctrl,
+                  geometryOverride: topCenterGeo,
+                  progressOverride: p,
+                  child: const SizedBox.expand(),
+                ),
               ),
             ),
-          ),
+          );
+          await tester.pump();
+
+          final shape = find.byKey(
+            const ValueKey('dynamic-notification-shape'),
+          );
+          expect(shape, findsOneWidget);
+
+          Rect? pathBounds;
+          expect(
+            shape,
+            paints..something((Symbol method, List<dynamic> args) {
+              if (method == #drawPath) {
+                pathBounds = (args[0] as Path).getBounds();
+                return true;
+              }
+              return false;
+            }),
+          );
+          expect(pathBounds, isNotNull);
+          final globalBounds = pathBounds!.shift(tester.getTopLeft(shape));
+
+          // Center X is strictly at the top-center cutout X (196.5)
+          expect(globalBounds.center.dx, closeTo(196.5, 2.0));
+        }
+      },
+    );
+
+    testWidgets(
+      '2. Top-left punch-hole (Honor View 20): emerges vertically downward (+Y) from actual camera X',
+      (tester) async {
+        tester.view.physicalSize = const Size(412, 892);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        // Top-left corner camera cutout fixture (Honor View 20 style)
+        const topLeftGeo = NotchGeometry(
+          bounds: Rect.fromLTWH(24, 10, 24, 24),
+          center: Offset(36, 22),
+          width: 24,
+          height: 24,
+          top: 10,
+          bottom: 34,
+          screenSize: Size(412, 892),
+          insets: EdgeInsets.only(top: 40),
+          source: NotchGeometrySource.displayFeature,
+          confidence: NotchGeometryConfidence.exact,
+          shape: NotchShape.punchHole,
+          hasCutout: true,
+          edge: CutoutEdge.top,
         );
-        await tester.pump();
 
-        final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
-        expect(shape, findsOneWidget);
+        final ctrl = DynamicNotificationController();
 
-        Rect? pathBounds;
-        expect(
-          shape,
-          paints..something((Symbol method, List<dynamic> args) {
-            if (method == #drawPath) {
-              pathBounds = (args[0] as Path).getBounds();
-              return true;
-            }
-            return false;
-          }),
-        );
-        expect(pathBounds, isNotNull);
-        final globalBounds = pathBounds!.shift(tester.getTopLeft(shape));
+        // Sample progress at 0.10, 0.20, 0.28: assert vertical emergence at actual camera X (36.0)
+        double prevBottom = 0.0;
+        for (final p in [0.10, 0.20, 0.28]) {
+          await tester.pumpWidget(
+            MaterialApp(
+              home: MediaQuery(
+                data: const MediaQueryData(
+                  size: Size(412, 892),
+                  viewPadding: EdgeInsets.only(top: 40),
+                ),
+                child: DynamicNotifications(
+                  controller: ctrl,
+                  geometryOverride: topLeftGeo,
+                  progressOverride: p,
+                  child: const SizedBox.expand(),
+                ),
+              ),
+            ),
+          );
+          await tester.pump();
 
-        // Center X is strictly at the top-center cutout X (196.5)
-        expect(globalBounds.center.dx, closeTo(196.5, 2.0));
-      }
-    });
+          final shape = find.byKey(
+            const ValueKey('dynamic-notification-shape'),
+          );
+          Rect? pathBounds;
+          expect(
+            shape,
+            paints..something((Symbol method, List<dynamic> args) {
+              if (method == #drawPath) {
+                pathBounds = (args[0] as Path).getBounds();
+                return true;
+              }
+              return false;
+            }),
+          );
+          expect(pathBounds, isNotNull);
+          final globalBounds = pathBounds!.shift(tester.getTopLeft(shape));
 
-    testWidgets('2. Top-left punch-hole (Honor View 20): emerges vertically downward (+Y) from actual camera X', (tester) async {
-      tester.view.physicalSize = const Size(412, 892);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+          // Droplet emerges vertically from the actual camera cutout position (X = 36.0), NOT from screen center
+          expect(globalBounds.center.dx, closeTo(36.0, 3.0));
+          expect(pathBounds!.top, lessThanOrEqualTo(topLeftGeo.anchorTop));
+          expect(pathBounds!.bottom, greaterThan(prevBottom));
+          prevBottom = pathBounds!.bottom;
+        }
 
-      // Top-left corner camera cutout fixture (Honor View 20 style)
-      const topLeftGeo = NotchGeometry(
-        bounds: Rect.fromLTWH(24, 10, 24, 24),
-        center: Offset(36, 22),
-        width: 24,
-        height: 24,
-        top: 10,
-        bottom: 34,
-        screenSize: Size(412, 892),
-        insets: EdgeInsets.only(top: 40),
-        source: NotchGeometrySource.displayFeature,
-        confidence: NotchGeometryConfidence.exact,
-        shape: NotchShape.punchHole,
-        hasCutout: true,
-        edge: CutoutEdge.top,
-      );
-
-      final ctrl = DynamicNotificationController();
-
-      // Sample progress at 0.10, 0.20, 0.28: assert vertical emergence at actual camera X (36.0)
-      double prevBottom = 0.0;
-      for (final p in [0.10, 0.20, 0.28]) {
+        // Settle into full card (progress = 1.0)
         await tester.pumpWidget(
           MaterialApp(
             home: MediaQuery(
@@ -2978,7 +3111,7 @@ void main() {
               child: DynamicNotifications(
                 controller: ctrl,
                 geometryOverride: topLeftGeo,
-                progressOverride: p,
+                progressOverride: 1.0,
                 child: const SizedBox.expand(),
               ),
             ),
@@ -2986,914 +3119,934 @@ void main() {
         );
         await tester.pump();
 
-        final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
-        Rect? pathBounds;
-        expect(
-          shape,
-          paints..something((Symbol method, List<dynamic> args) {
-            if (method == #drawPath) {
-              pathBounds = (args[0] as Path).getBounds();
-              return true;
-            }
-            return false;
-          }),
+        // Fully expanded card rests upright in standard screen center (412 / 2 = 206)
+        final cardRect = tester.getRect(
+          find.byKey(const ValueKey('dynamic-notification-shape')),
         );
-        expect(pathBounds, isNotNull);
-        final globalBounds = pathBounds!.shift(tester.getTopLeft(shape));
+        expect(cardRect.center.dx, closeTo(206.0, 5.0));
+      },
+    );
 
-        // Droplet emerges vertically from the actual camera cutout position (X = 36.0), NOT from screen center
-        expect(globalBounds.center.dx, closeTo(36.0, 3.0));
-        expect(pathBounds!.top, lessThanOrEqualTo(topLeftGeo.anchorTop));
-        expect(pathBounds!.bottom, greaterThan(prevBottom));
-        prevBottom = pathBounds!.bottom;
-      }
+    testWidgets(
+      '3. Top-right punch-hole: emerges vertically downward (+Y) from actual camera X',
+      (tester) async {
+        tester.view.physicalSize = const Size(412, 892);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
 
-      // Settle into full card (progress = 1.0)
-      await tester.pumpWidget(
-        MaterialApp(
-          home: MediaQuery(
-            data: const MediaQueryData(
-              size: Size(412, 892),
-              viewPadding: EdgeInsets.only(top: 40),
-            ),
-            child: DynamicNotifications(
-              controller: ctrl,
-              geometryOverride: topLeftGeo,
-              progressOverride: 1.0,
-              child: const SizedBox.expand(),
-            ),
-          ),
-        ),
-      );
-      await tester.pump();
-
-      // Fully expanded card rests upright in standard screen center (412 / 2 = 206)
-      final cardRect = tester.getRect(find.byKey(const ValueKey('dynamic-notification-shape')));
-      expect(cardRect.center.dx, closeTo(206.0, 5.0));
-    });
-
-    testWidgets('3. Top-right punch-hole: emerges vertically downward (+Y) from actual camera X', (tester) async {
-      tester.view.physicalSize = const Size(412, 892);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      const topRightGeo = NotchGeometry(
-        bounds: Rect.fromLTWH(364, 10, 24, 24),
-        center: Offset(376, 22),
-        width: 24,
-        height: 24,
-        top: 10,
-        bottom: 34,
-        screenSize: Size(412, 892),
-        insets: EdgeInsets.only(top: 40),
-        source: NotchGeometrySource.displayFeature,
-        confidence: NotchGeometryConfidence.exact,
-        shape: NotchShape.punchHole,
-        hasCutout: true,
-        edge: CutoutEdge.top,
-      );
-
-      final ctrl = DynamicNotificationController();
-
-      double prevBottom = 0.0;
-      for (final p in [0.10, 0.20, 0.28]) {
-        await tester.pumpWidget(
-          MaterialApp(
-            home: MediaQuery(
-              data: const MediaQueryData(
-                size: Size(412, 892),
-                viewPadding: EdgeInsets.only(top: 40),
-              ),
-              child: DynamicNotifications(
-                controller: ctrl,
-                geometryOverride: topRightGeo,
-                progressOverride: p,
-                child: const SizedBox.expand(),
-              ),
-            ),
-          ),
+        const topRightGeo = NotchGeometry(
+          bounds: Rect.fromLTWH(364, 10, 24, 24),
+          center: Offset(376, 22),
+          width: 24,
+          height: 24,
+          top: 10,
+          bottom: 34,
+          screenSize: Size(412, 892),
+          insets: EdgeInsets.only(top: 40),
+          source: NotchGeometrySource.displayFeature,
+          confidence: NotchGeometryConfidence.exact,
+          shape: NotchShape.punchHole,
+          hasCutout: true,
+          edge: CutoutEdge.top,
         );
-        await tester.pump();
 
-        final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
-        Rect? pathBounds;
-        expect(
-          shape,
-          paints..something((Symbol method, List<dynamic> args) {
-            if (method == #drawPath) {
-              pathBounds = (args[0] as Path).getBounds();
-              return true;
-            }
-            return false;
-          }),
-        );
-        expect(pathBounds, isNotNull);
-        final globalBounds = pathBounds!.shift(tester.getTopLeft(shape));
+        final ctrl = DynamicNotificationController();
 
-        // Droplet emerges vertically from the actual camera cutout position (X = 376.0)
-        expect(globalBounds.center.dx, closeTo(376.0, 3.0));
-        expect(pathBounds!.top, lessThanOrEqualTo(topRightGeo.anchorTop));
-        expect(pathBounds!.bottom, greaterThan(prevBottom));
-        prevBottom = pathBounds!.bottom;
-      }
-    });
-
-    testWidgets('4. Left-side cutout: uses virtual top-center origin and emerges vertically downward (+Y)', (tester) async {
-      tester.view.physicalSize = const Size(892, 412);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      const leftGeometry = NotchGeometry(
-        bounds: Rect.fromLTWH(12, 190, 24, 24),
-        center: Offset(24, 202),
-        width: 24,
-        height: 24,
-        top: 190,
-        bottom: 214,
-        screenSize: Size(892, 412),
-        insets: EdgeInsets.only(left: 48),
-        source: NotchGeometrySource.displayFeature,
-        confidence: NotchGeometryConfidence.exact,
-        shape: NotchShape.punchHole,
-        hasCutout: true,
-        edge: CutoutEdge.left,
-      );
-
-      final ctrl = DynamicNotificationController();
-
-      // Available screen center: (48 + 892) / 2 = 470
-      const expectedCenterX = 470.0;
-
-      // Sample progress at 0.10, 0.20, 0.28: assert vertical emergence at top-center
-      double previousBottom = 0.0;
-      for (final p in [0.10, 0.20, 0.28]) {
-        await tester.pumpWidget(
-          MaterialApp(
-            home: MediaQuery(
-              data: const MediaQueryData(
-                size: Size(892, 412),
-                viewPadding: EdgeInsets.only(left: 48),
-              ),
-              child: DynamicNotifications(
-                controller: ctrl,
-                geometryOverride: leftGeometry,
-                progressOverride: p,
-                child: const SizedBox.expand(),
-              ),
-            ),
-          ),
-        );
-        await tester.pump();
-
-        final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
-        Rect? bounds;
-        expect(
-          shape,
-          paints..something((Symbol method, List<dynamic> args) {
-            if (method == #drawPath) {
-              bounds = (args[0] as Path).getBounds();
-              return true;
-            }
-            return false;
-          }),
-        );
-        expect(bounds, isNotNull);
-        final globalBounds = bounds!.shift(tester.getTopLeft(shape));
-
-        // Center X is at virtual top-center (470.0), NOT at the physical left camera (X = 24.0)
-        expect(globalBounds.center.dx, closeTo(expectedCenterX, 4.0));
-        // Droplet top is attached to the top display edge
-        expect(bounds!.top, lessThanOrEqualTo(8.0));
-        // Bottom moves downward (+Y) monotonically
-        expect(bounds!.bottom, greaterThan(previousBottom));
-        previousBottom = bounds!.bottom;
-      }
-    });
-
-    testWidgets('5. Right-side cutout: uses virtual top-center origin and emerges vertically downward (+Y)', (tester) async {
-      tester.view.physicalSize = const Size(892, 412);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      const rightGeometry = NotchGeometry(
-        bounds: Rect.fromLTWH(856, 190, 24, 24),
-        center: Offset(868, 202),
-        width: 24,
-        height: 24,
-        top: 190,
-        bottom: 214,
-        screenSize: Size(892, 412),
-        insets: EdgeInsets.only(right: 48),
-        source: NotchGeometrySource.displayFeature,
-        confidence: NotchGeometryConfidence.exact,
-        shape: NotchShape.punchHole,
-        hasCutout: true,
-        edge: CutoutEdge.right,
-      );
-
-      final ctrl = DynamicNotificationController();
-      const expectedCenterX = 422.0; // (892 - 48) / 2
-
-      double prevBottom = 0.0;
-      for (final p in [0.10, 0.20, 0.28]) {
-        await tester.pumpWidget(
-          MaterialApp(
-            home: MediaQuery(
-              data: const MediaQueryData(
-                size: Size(892, 412),
-                viewPadding: EdgeInsets.only(right: 48),
-              ),
-              child: DynamicNotifications(
-                controller: ctrl,
-                geometryOverride: rightGeometry,
-                progressOverride: p,
-                child: const SizedBox.expand(),
-              ),
-            ),
-          ),
-        );
-        await tester.pump();
-
-        final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
-        Rect? bounds;
-        expect(
-          shape,
-          paints..something((Symbol method, List<dynamic> args) {
-            if (method == #drawPath) {
-              bounds = (args[0] as Path).getBounds();
-              return true;
-            }
-            return false;
-          }),
-        );
-        expect(bounds, isNotNull);
-        final globalBounds = bounds!.shift(tester.getTopLeft(shape));
-
-        // Origin is virtual top-center (422.0), NOT at the physical right cutout (X = 868.0)
-        expect(globalBounds.center.dx, closeTo(expectedCenterX, 4.0));
-        expect(bounds!.top, lessThanOrEqualTo(8.0));
-        expect(bounds!.bottom, greaterThan(prevBottom));
-        prevBottom = bounds!.bottom;
-      }
-    });
-
-    testWidgets('6. Bottom-only cutout: ignored as origin; uses virtual top-center fallback', (tester) async {
-      const bottomGeometry = NotchGeometry(
-        bounds: Rect.fromLTWH(184.5, 820, 24, 24),
-        center: Offset(196.5, 832),
-        width: 24,
-        height: 24,
-        top: 820,
-        bottom: 844,
-        screenSize: Size(393, 852),
-        insets: EdgeInsets.only(top: 24, bottom: 48),
-        source: NotchGeometrySource.displayFeature,
-        confidence: NotchGeometryConfidence.exact,
-        shape: NotchShape.punchHole,
-        hasCutout: true,
-        edge: CutoutEdge.bottom,
-      );
-
-      final ctrl = DynamicNotificationController();
-
-      double prevBottom = 0.0;
-      for (final p in [0.10, 0.20, 0.28]) {
-        await tester.pumpWidget(
-          MaterialApp(
-            home: MediaQuery(
-              data: const MediaQueryData(
-                size: Size(393, 852),
-                viewPadding: EdgeInsets.only(top: 24, bottom: 48),
-              ),
-              child: DynamicNotifications(
-                controller: ctrl,
-                geometryOverride: bottomGeometry,
-                progressOverride: p,
-                child: const SizedBox.expand(),
-              ),
-            ),
-          ),
-        );
-        await tester.pump();
-
-        final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
-        Rect? bounds;
-        expect(
-          shape,
-          paints..something((Symbol method, List<dynamic> args) {
-            if (method == #drawPath) {
-              bounds = (args[0] as Path).getBounds();
-              return true;
-            }
-            return false;
-          }),
-        );
-        expect(bounds, isNotNull);
-
-        // Droplet emerges from screen top center (196.5), NOT from bottom (Y = 820)
-        expect(bounds!.center.dx, closeTo(196.5, 2.0));
-        expect(bounds!.top, lessThanOrEqualTo(28.0));
-        expect(bounds!.bottom, greaterThan(prevBottom));
-        prevBottom = bounds!.bottom;
-      }
-    });
-
-    testWidgets('7. No-cutout: preserved fallback emerges vertically from safe area', (tester) async {
-      final ctrl = DynamicNotificationController();
-
-      double prevBottom = 0.0;
-      for (final p in [0.10, 0.20, 0.28]) {
-        await tester.pumpWidget(
-          MaterialApp(
-            home: MediaQuery(
-              data: const MediaQueryData(
-                size: Size(393, 852),
-                padding: EdgeInsets.only(top: 44),
-              ),
-              child: DynamicNotifications(
-                controller: ctrl,
-                geometryOverride: const NotchGeometry(
-                  bounds: null,
-                  center: Offset(196.5, 22),
-                  width: 0,
-                  height: 0,
-                  top: 0,
-                  bottom: 44,
-                  screenSize: Size(393, 852),
-                  insets: EdgeInsets.only(top: 44),
-                  source: NotchGeometrySource.safeArea,
-                  confidence: NotchGeometryConfidence.fallback,
-                  shape: NotchShape.none,
-                  hasCutout: false,
-                  edge: CutoutEdge.none,
+        double prevBottom = 0.0;
+        for (final p in [0.10, 0.20, 0.28]) {
+          await tester.pumpWidget(
+            MaterialApp(
+              home: MediaQuery(
+                data: const MediaQueryData(
+                  size: Size(412, 892),
+                  viewPadding: EdgeInsets.only(top: 40),
                 ),
-                progressOverride: p,
-                child: const SizedBox.expand(),
+                child: DynamicNotifications(
+                  controller: ctrl,
+                  geometryOverride: topRightGeo,
+                  progressOverride: p,
+                  child: const SizedBox.expand(),
+                ),
+              ),
+            ),
+          );
+          await tester.pump();
+
+          final shape = find.byKey(
+            const ValueKey('dynamic-notification-shape'),
+          );
+          Rect? pathBounds;
+          expect(
+            shape,
+            paints..something((Symbol method, List<dynamic> args) {
+              if (method == #drawPath) {
+                pathBounds = (args[0] as Path).getBounds();
+                return true;
+              }
+              return false;
+            }),
+          );
+          expect(pathBounds, isNotNull);
+          final globalBounds = pathBounds!.shift(tester.getTopLeft(shape));
+
+          // Droplet emerges vertically from the actual camera cutout position (X = 376.0)
+          expect(globalBounds.center.dx, closeTo(376.0, 3.0));
+          expect(pathBounds!.top, lessThanOrEqualTo(topRightGeo.anchorTop));
+          expect(pathBounds!.bottom, greaterThan(prevBottom));
+          prevBottom = pathBounds!.bottom;
+        }
+      },
+    );
+
+    testWidgets(
+      '4. Left-side cutout: uses virtual top-center origin and emerges vertically downward (+Y)',
+      (tester) async {
+        tester.view.physicalSize = const Size(892, 412);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        const leftGeometry = NotchGeometry(
+          bounds: Rect.fromLTWH(12, 190, 24, 24),
+          center: Offset(24, 202),
+          width: 24,
+          height: 24,
+          top: 190,
+          bottom: 214,
+          screenSize: Size(892, 412),
+          insets: EdgeInsets.only(left: 48),
+          source: NotchGeometrySource.displayFeature,
+          confidence: NotchGeometryConfidence.exact,
+          shape: NotchShape.punchHole,
+          hasCutout: true,
+          edge: CutoutEdge.left,
+        );
+
+        final ctrl = DynamicNotificationController();
+
+        // Available screen center: (48 + 892) / 2 = 470
+        const expectedCenterX = 470.0;
+
+        // Sample progress at 0.10, 0.20, 0.28: assert vertical emergence at top-center
+        double previousBottom = 0.0;
+        for (final p in [0.10, 0.20, 0.28]) {
+          await tester.pumpWidget(
+            MaterialApp(
+              home: MediaQuery(
+                data: const MediaQueryData(
+                  size: Size(892, 412),
+                  viewPadding: EdgeInsets.only(left: 48),
+                ),
+                child: DynamicNotifications(
+                  controller: ctrl,
+                  geometryOverride: leftGeometry,
+                  progressOverride: p,
+                  child: const SizedBox.expand(),
+                ),
+              ),
+            ),
+          );
+          await tester.pump();
+
+          final shape = find.byKey(
+            const ValueKey('dynamic-notification-shape'),
+          );
+          Rect? bounds;
+          expect(
+            shape,
+            paints..something((Symbol method, List<dynamic> args) {
+              if (method == #drawPath) {
+                bounds = (args[0] as Path).getBounds();
+                return true;
+              }
+              return false;
+            }),
+          );
+          expect(bounds, isNotNull);
+          final globalBounds = bounds!.shift(tester.getTopLeft(shape));
+
+          // Center X is at virtual top-center (470.0), NOT at the physical left camera (X = 24.0)
+          expect(globalBounds.center.dx, closeTo(expectedCenterX, 4.0));
+          // Droplet top is attached to the top display edge
+          expect(bounds!.top, lessThanOrEqualTo(8.0));
+          // Bottom moves downward (+Y) monotonically
+          expect(bounds!.bottom, greaterThan(previousBottom));
+          previousBottom = bounds!.bottom;
+        }
+      },
+    );
+
+    testWidgets(
+      '5. Right-side cutout: uses virtual top-center origin and emerges vertically downward (+Y)',
+      (tester) async {
+        tester.view.physicalSize = const Size(892, 412);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        const rightGeometry = NotchGeometry(
+          bounds: Rect.fromLTWH(856, 190, 24, 24),
+          center: Offset(868, 202),
+          width: 24,
+          height: 24,
+          top: 190,
+          bottom: 214,
+          screenSize: Size(892, 412),
+          insets: EdgeInsets.only(right: 48),
+          source: NotchGeometrySource.displayFeature,
+          confidence: NotchGeometryConfidence.exact,
+          shape: NotchShape.punchHole,
+          hasCutout: true,
+          edge: CutoutEdge.right,
+        );
+
+        final ctrl = DynamicNotificationController();
+        const expectedCenterX = 422.0; // (892 - 48) / 2
+
+        double prevBottom = 0.0;
+        for (final p in [0.10, 0.20, 0.28]) {
+          await tester.pumpWidget(
+            MaterialApp(
+              home: MediaQuery(
+                data: const MediaQueryData(
+                  size: Size(892, 412),
+                  viewPadding: EdgeInsets.only(right: 48),
+                ),
+                child: DynamicNotifications(
+                  controller: ctrl,
+                  geometryOverride: rightGeometry,
+                  progressOverride: p,
+                  child: const SizedBox.expand(),
+                ),
+              ),
+            ),
+          );
+          await tester.pump();
+
+          final shape = find.byKey(
+            const ValueKey('dynamic-notification-shape'),
+          );
+          Rect? bounds;
+          expect(
+            shape,
+            paints..something((Symbol method, List<dynamic> args) {
+              if (method == #drawPath) {
+                bounds = (args[0] as Path).getBounds();
+                return true;
+              }
+              return false;
+            }),
+          );
+          expect(bounds, isNotNull);
+          final globalBounds = bounds!.shift(tester.getTopLeft(shape));
+
+          // Origin is virtual top-center (422.0), NOT at the physical right cutout (X = 868.0)
+          expect(globalBounds.center.dx, closeTo(expectedCenterX, 4.0));
+          expect(bounds!.top, lessThanOrEqualTo(8.0));
+          expect(bounds!.bottom, greaterThan(prevBottom));
+          prevBottom = bounds!.bottom;
+        }
+      },
+    );
+
+    testWidgets(
+      '6. Bottom-only cutout: ignored as origin; uses virtual top-center fallback',
+      (tester) async {
+        const bottomGeometry = NotchGeometry(
+          bounds: Rect.fromLTWH(184.5, 820, 24, 24),
+          center: Offset(196.5, 832),
+          width: 24,
+          height: 24,
+          top: 820,
+          bottom: 844,
+          screenSize: Size(393, 852),
+          insets: EdgeInsets.only(top: 24, bottom: 48),
+          source: NotchGeometrySource.displayFeature,
+          confidence: NotchGeometryConfidence.exact,
+          shape: NotchShape.punchHole,
+          hasCutout: true,
+          edge: CutoutEdge.bottom,
+        );
+
+        final ctrl = DynamicNotificationController();
+
+        double prevBottom = 0.0;
+        for (final p in [0.10, 0.20, 0.28]) {
+          await tester.pumpWidget(
+            MaterialApp(
+              home: MediaQuery(
+                data: const MediaQueryData(
+                  size: Size(393, 852),
+                  viewPadding: EdgeInsets.only(top: 24, bottom: 48),
+                ),
+                child: DynamicNotifications(
+                  controller: ctrl,
+                  geometryOverride: bottomGeometry,
+                  progressOverride: p,
+                  child: const SizedBox.expand(),
+                ),
+              ),
+            ),
+          );
+          await tester.pump();
+
+          final shape = find.byKey(
+            const ValueKey('dynamic-notification-shape'),
+          );
+          Rect? bounds;
+          expect(
+            shape,
+            paints..something((Symbol method, List<dynamic> args) {
+              if (method == #drawPath) {
+                bounds = (args[0] as Path).getBounds();
+                return true;
+              }
+              return false;
+            }),
+          );
+          expect(bounds, isNotNull);
+
+          // Droplet emerges from screen top center (196.5), NOT from bottom (Y = 820)
+          expect(bounds!.center.dx, closeTo(196.5, 2.0));
+          expect(bounds!.top, lessThanOrEqualTo(28.0));
+          expect(bounds!.bottom, greaterThan(prevBottom));
+          prevBottom = bounds!.bottom;
+        }
+      },
+    );
+
+    testWidgets(
+      '7. No-cutout: preserved fallback emerges vertically from safe area',
+      (tester) async {
+        final ctrl = DynamicNotificationController();
+
+        double prevBottom = 0.0;
+        for (final p in [0.10, 0.20, 0.28]) {
+          await tester.pumpWidget(
+            MaterialApp(
+              home: MediaQuery(
+                data: const MediaQueryData(
+                  size: Size(393, 852),
+                  padding: EdgeInsets.only(top: 44),
+                ),
+                child: DynamicNotifications(
+                  controller: ctrl,
+                  geometryOverride: const NotchGeometry(
+                    bounds: null,
+                    center: Offset(196.5, 22),
+                    width: 0,
+                    height: 0,
+                    top: 0,
+                    bottom: 44,
+                    screenSize: Size(393, 852),
+                    insets: EdgeInsets.only(top: 44),
+                    source: NotchGeometrySource.safeArea,
+                    confidence: NotchGeometryConfidence.fallback,
+                    shape: NotchShape.none,
+                    hasCutout: false,
+                    edge: CutoutEdge.none,
+                  ),
+                  progressOverride: p,
+                  child: const SizedBox.expand(),
+                ),
+              ),
+            ),
+          );
+          await tester.pump();
+
+          final shape = find.byKey(
+            const ValueKey('dynamic-notification-shape'),
+          );
+          Rect? bounds;
+          expect(
+            shape,
+            paints..something((Symbol method, List<dynamic> args) {
+              if (method == #drawPath) {
+                bounds = (args[0] as Path).getBounds();
+                return true;
+              }
+              return false;
+            }),
+          );
+          expect(bounds, isNotNull);
+
+          expect(bounds!.center.dx, closeTo(196.5, 2.0));
+          expect(bounds!.top, lessThanOrEqualTo(48.0));
+          expect(bounds!.bottom, greaterThan(prevBottom));
+          prevBottom = bounds!.bottom;
+        }
+      },
+    );
+
+    testWidgets(
+      '8. Reverse landscape and landscape orientation: consistent vertical emergence with zero jump',
+      (tester) async {
+        tester.view.physicalSize = const Size(892, 412);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        const landscapeLeft = NotchGeometry(
+          bounds: Rect.fromLTWH(12, 190, 24, 24),
+          center: Offset(24, 202),
+          width: 24,
+          height: 24,
+          top: 190,
+          bottom: 214,
+          screenSize: Size(892, 412),
+          insets: EdgeInsets.only(left: 48),
+          source: NotchGeometrySource.displayFeature,
+          confidence: NotchGeometryConfidence.exact,
+          shape: NotchShape.punchHole,
+          hasCutout: true,
+          edge: CutoutEdge.left,
+        );
+
+        const landscapeRight = NotchGeometry(
+          bounds: Rect.fromLTWH(856, 190, 24, 24),
+          center: Offset(868, 202),
+          width: 24,
+          height: 24,
+          top: 190,
+          bottom: 214,
+          screenSize: Size(892, 412),
+          insets: EdgeInsets.only(right: 48),
+          source: NotchGeometrySource.displayFeature,
+          confidence: NotchGeometryConfidence.exact,
+          shape: NotchShape.punchHole,
+          hasCutout: true,
+          edge: CutoutEdge.right,
+        );
+
+        final ctrl = DynamicNotificationController();
+
+        // Landscape Left: vertical emergence
+        double prevLeftBottom = 0.0;
+        for (final p in [0.15, 0.25]) {
+          await tester.pumpWidget(
+            MaterialApp(
+              home: MediaQuery(
+                data: const MediaQueryData(
+                  size: Size(892, 412),
+                  viewPadding: EdgeInsets.only(left: 48),
+                ),
+                child: DynamicNotifications(
+                  controller: ctrl,
+                  geometryOverride: landscapeLeft,
+                  progressOverride: p,
+                  child: const SizedBox.expand(),
+                ),
+              ),
+            ),
+          );
+          await tester.pump();
+          final shapeLeft = find.byKey(
+            const ValueKey('dynamic-notification-shape'),
+          );
+          expect(shapeLeft, findsOneWidget);
+
+          Rect? bounds;
+          expect(
+            shapeLeft,
+            paints..something((Symbol method, List<dynamic> args) {
+              if (method == #drawPath) {
+                bounds = (args[0] as Path).getBounds();
+                return true;
+              }
+              return false;
+            }),
+          );
+          expect(bounds, isNotNull);
+          final globalBounds = bounds!.shift(tester.getTopLeft(shapeLeft));
+          expect(globalBounds.center.dx, closeTo(470.0, 4.0));
+          expect(bounds!.bottom, greaterThan(prevLeftBottom));
+          prevLeftBottom = bounds!.bottom;
+        }
+
+        // Rotate to Reverse Landscape Right: vertical emergence remains smooth
+        double prevRightBottom = 0.0;
+        for (final p in [0.15, 0.25]) {
+          await tester.pumpWidget(
+            MaterialApp(
+              home: MediaQuery(
+                data: const MediaQueryData(
+                  size: Size(892, 412),
+                  viewPadding: EdgeInsets.only(right: 48),
+                ),
+                child: DynamicNotifications(
+                  controller: ctrl,
+                  geometryOverride: landscapeRight,
+                  progressOverride: p,
+                  child: const SizedBox.expand(),
+                ),
+              ),
+            ),
+          );
+          await tester.pump();
+          final shapeRight = find.byKey(
+            const ValueKey('dynamic-notification-shape'),
+          );
+          expect(shapeRight, findsOneWidget);
+
+          Rect? bounds;
+          expect(
+            shapeRight,
+            paints..something((Symbol method, List<dynamic> args) {
+              if (method == #drawPath) {
+                bounds = (args[0] as Path).getBounds();
+                return true;
+              }
+              return false;
+            }),
+          );
+          expect(bounds, isNotNull);
+          final globalBounds = bounds!.shift(tester.getTopLeft(shapeRight));
+          expect(globalBounds.center.dx, closeTo(422.0, 4.0));
+          expect(bounds!.bottom, greaterThan(prevRightBottom));
+          prevRightBottom = bounds!.bottom;
+        }
+      },
+    );
+
+    testWidgets(
+      '9. Top-notch behavior remains unchanged with fluid neck attachment',
+      (tester) async {
+        final ctrl = DynamicNotificationController();
+        const testSize = Size(393, 852);
+        const pillBounds = Rect.fromLTWH(134.5, 11, 124, 37);
+
+        const islandGeo = NotchGeometry(
+          bounds: pillBounds,
+          center: Offset(196.5, 29.5),
+          width: 124,
+          height: 37,
+          top: 11,
+          bottom: 48,
+          screenSize: testSize,
+          insets: EdgeInsets.only(top: 54),
+          source: NotchGeometrySource.displayFeature,
+          confidence: NotchGeometryConfidence.exact,
+          shape: NotchShape.pill,
+          hasCutout: true,
+          edge: CutoutEdge.top,
+        );
+
+        double prevBottom = 0.0;
+        for (final p in [0.10, 0.20, 0.28]) {
+          await tester.pumpWidget(
+            MaterialApp(
+              home: MediaQuery(
+                data: const MediaQueryData(
+                  size: testSize,
+                  viewPadding: EdgeInsets.only(top: 54),
+                ),
+                child: DynamicNotifications(
+                  controller: ctrl,
+                  geometryOverride: islandGeo,
+                  progressOverride: p,
+                  child: const SizedBox.expand(),
+                ),
+              ),
+            ),
+          );
+          await tester.pump();
+
+          final shape = find.byKey(
+            const ValueKey('dynamic-notification-shape'),
+          );
+          Rect? bounds;
+          expect(
+            shape,
+            paints..something((Symbol method, List<dynamic> args) {
+              if (method == #drawPath) {
+                bounds = (args[0] as Path).getBounds();
+                return true;
+              }
+              return false;
+            }),
+          );
+          expect(bounds, isNotNull);
+          expect(bounds!.center.dx, closeTo(196.5, 2.0));
+          expect(bounds!.top, lessThanOrEqualTo(islandGeo.anchorTop));
+          expect(bounds!.bottom, greaterThan(prevBottom));
+          prevBottom = bounds!.bottom;
+        }
+      },
+    );
+
+    testWidgets(
+      '10. Exact reverse dismissal: upward vertical drag scrubs morph progress in reverse and dismisses',
+      (tester) async {
+        tester.view.physicalSize = const Size(892, 412);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        const leftGeometry = NotchGeometry(
+          bounds: Rect.fromLTWH(12, 190, 24, 24),
+          center: Offset(24, 202),
+          width: 24,
+          height: 24,
+          top: 190,
+          bottom: 214,
+          screenSize: Size(892, 412),
+          insets: EdgeInsets.only(left: 48),
+          source: NotchGeometrySource.displayFeature,
+          confidence: NotchGeometryConfidence.exact,
+          shape: NotchShape.punchHole,
+          hasCutout: true,
+          edge: CutoutEdge.left,
+        );
+
+        final ctrl = DynamicNotificationController();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: MediaQuery(
+                data: const MediaQueryData(
+                  size: Size(892, 412),
+                  viewPadding: EdgeInsets.only(left: 48),
+                ),
+                child: DynamicNotifications(
+                  controller: ctrl,
+                  geometryOverride: leftGeometry,
+                  child: const SizedBox.expand(),
+                ),
               ),
             ),
           ),
         );
+
+        ctrl.show(
+          const DynamicNotification(
+            title: 'Vertical Reverse Dismissal',
+            duration: null,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.text('Vertical Reverse Dismissal')),
+        );
+
+        // Drag vertically upward by -40px (past -32px dismiss threshold, 40 / 80 = 0.5 morph progress)
+        await gesture.moveBy(const Offset(0, -40));
         await tester.pump();
 
+        expect(ctrl.interactionState, NotificationInteractionState.dragging);
+        expect(ctrl.morphProgress, closeTo(40.0 / 80.0, 0.02));
+
+        // Release gesture to complete vertical dismissal into virtual top-center
+        await gesture.up();
+        await tester.pump();
+        expect(ctrl.interactionState, NotificationInteractionState.dismissing);
+
+        await tester.pumpAndSettle();
+        expect(ctrl.currentNotification, isNull);
+      },
+    );
+
+    testWidgets(
+      '11. Manual drag return continuity: shape bottom moves monotonically upward during reverse drag',
+      (tester) async {
+        tester.view.physicalSize = const Size(892, 412);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        const leftGeometry = NotchGeometry(
+          bounds: Rect.fromLTWH(12, 190, 24, 24),
+          center: Offset(24, 202),
+          width: 24,
+          height: 24,
+          top: 190,
+          bottom: 214,
+          screenSize: Size(892, 412),
+          insets: EdgeInsets.only(left: 48),
+          source: NotchGeometrySource.displayFeature,
+          confidence: NotchGeometryConfidence.exact,
+          shape: NotchShape.punchHole,
+          hasCutout: true,
+          edge: CutoutEdge.left,
+        );
+
+        final ctrl = DynamicNotificationController();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: MediaQuery(
+                data: const MediaQueryData(
+                  size: Size(892, 412),
+                  viewPadding: EdgeInsets.only(left: 48),
+                ),
+                child: DynamicNotifications(
+                  controller: ctrl,
+                  geometryOverride: leftGeometry,
+                  child: const SizedBox.expand(),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        ctrl.show(
+          const DynamicNotification(
+            title: 'Monotonic Drag Return',
+            duration: null,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.text('Monotonic Drag Return')),
+        );
+
+        // Step drag upward from 0 to -60px in -10px steps
+        double prevBottom = double.infinity;
         final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
-        Rect? bounds;
-        expect(
-          shape,
-          paints..something((Symbol method, List<dynamic> args) {
-            if (method == #drawPath) {
-              bounds = (args[0] as Path).getBounds();
-              return true;
-            }
-            return false;
-          }),
+
+        for (int step = 1; step <= 6; step++) {
+          await gesture.moveBy(const Offset(0, -10));
+          await tester.pump();
+
+          Rect? currentBounds;
+          expect(
+            shape,
+            paints..something((Symbol method, List<dynamic> args) {
+              if (method == #drawPath) {
+                currentBounds = (args[0] as Path).getBounds();
+                return true;
+              }
+              return false;
+            }),
+          );
+          expect(currentBounds, isNotNull);
+
+          final curBottom = currentBounds!.bottom;
+          expect(
+            curBottom,
+            lessThanOrEqualTo(prevBottom + 1.0),
+            reason: 'Shape bottom moved downward during upward drag',
+          );
+          prevBottom = curBottom;
+        }
+
+        await gesture.up();
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets(
+      '12. Repeated notification lifecycle executes clean entrance and exit without state corruption',
+      (tester) async {
+        tester.view.physicalSize = const Size(892, 412);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        const leftGeometry = NotchGeometry(
+          bounds: Rect.fromLTWH(12, 190, 24, 24),
+          center: Offset(24, 202),
+          width: 24,
+          height: 24,
+          top: 190,
+          bottom: 214,
+          screenSize: Size(892, 412),
+          insets: EdgeInsets.only(left: 48),
+          source: NotchGeometrySource.displayFeature,
+          confidence: NotchGeometryConfidence.exact,
+          shape: NotchShape.punchHole,
+          hasCutout: true,
+          edge: CutoutEdge.left,
         );
-        expect(bounds, isNotNull);
 
-        expect(bounds!.center.dx, closeTo(196.5, 2.0));
-        expect(bounds!.top, lessThanOrEqualTo(48.0));
-        expect(bounds!.bottom, greaterThan(prevBottom));
-        prevBottom = bounds!.bottom;
-      }
-    });
+        final ctrl = DynamicNotificationController();
 
-    testWidgets('8. Reverse landscape and landscape orientation: consistent vertical emergence with zero jump', (tester) async {
-      tester.view.physicalSize = const Size(892, 412);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      const landscapeLeft = NotchGeometry(
-        bounds: Rect.fromLTWH(12, 190, 24, 24),
-        center: Offset(24, 202),
-        width: 24,
-        height: 24,
-        top: 190,
-        bottom: 214,
-        screenSize: Size(892, 412),
-        insets: EdgeInsets.only(left: 48),
-        source: NotchGeometrySource.displayFeature,
-        confidence: NotchGeometryConfidence.exact,
-        shape: NotchShape.punchHole,
-        hasCutout: true,
-        edge: CutoutEdge.left,
-      );
-
-      const landscapeRight = NotchGeometry(
-        bounds: Rect.fromLTWH(856, 190, 24, 24),
-        center: Offset(868, 202),
-        width: 24,
-        height: 24,
-        top: 190,
-        bottom: 214,
-        screenSize: Size(892, 412),
-        insets: EdgeInsets.only(right: 48),
-        source: NotchGeometrySource.displayFeature,
-        confidence: NotchGeometryConfidence.exact,
-        shape: NotchShape.punchHole,
-        hasCutout: true,
-        edge: CutoutEdge.right,
-      );
-
-      final ctrl = DynamicNotificationController();
-
-      // Landscape Left: vertical emergence
-      double prevLeftBottom = 0.0;
-      for (final p in [0.15, 0.25]) {
         await tester.pumpWidget(
           MaterialApp(
-            home: MediaQuery(
-              data: const MediaQueryData(
-                size: Size(892, 412),
-                viewPadding: EdgeInsets.only(left: 48),
-              ),
-              child: DynamicNotifications(
-                controller: ctrl,
-                geometryOverride: landscapeLeft,
-                progressOverride: p,
-                child: const SizedBox.expand(),
+            home: Scaffold(
+              body: MediaQuery(
+                data: const MediaQueryData(
+                  size: Size(892, 412),
+                  viewPadding: EdgeInsets.only(left: 48),
+                ),
+                child: DynamicNotifications(
+                  controller: ctrl,
+                  geometryOverride: leftGeometry,
+                  child: const SizedBox.expand(),
+                ),
               ),
             ),
           ),
         );
-        await tester.pump();
-        final shapeLeft = find.byKey(const ValueKey('dynamic-notification-shape'));
-        expect(shapeLeft, findsOneWidget);
 
-        Rect? bounds;
-        expect(
-          shapeLeft,
-          paints..something((Symbol method, List<dynamic> args) {
-            if (method == #drawPath) {
-              bounds = (args[0] as Path).getBounds();
-              return true;
-            }
-            return false;
-          }),
+        // Notification 1
+        ctrl.show(const DynamicNotification(title: 'Notif 1', duration: null));
+        await tester.pumpAndSettle();
+        expect(find.text('Notif 1'), findsOneWidget);
+        ctrl.dismiss();
+        await tester.pumpAndSettle();
+        expect(ctrl.currentNotification, isNull);
+
+        // Notification 2
+        ctrl.show(const DynamicNotification(title: 'Notif 2', duration: null));
+        await tester.pumpAndSettle();
+        expect(find.text('Notif 2'), findsOneWidget);
+        ctrl.dismiss();
+        await tester.pumpAndSettle();
+        expect(ctrl.currentNotification, isNull);
+
+        // Notification 3
+        ctrl.show(const DynamicNotification(title: 'Notif 3', duration: null));
+        await tester.pumpAndSettle();
+        expect(find.text('Notif 3'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      '14. Side-cutout: downward drag triggers open action and springs back on small gesture',
+      (tester) async {
+        var opened = false;
+        const leftGeometry = NotchGeometry(
+          bounds: Rect.fromLTWH(12, 190, 24, 24),
+          center: Offset(24, 202),
+          width: 24,
+          height: 24,
+          top: 190,
+          bottom: 214,
+          screenSize: Size(892, 412),
+          insets: EdgeInsets.only(left: 48),
+          source: NotchGeometrySource.displayFeature,
+          confidence: NotchGeometryConfidence.exact,
+          shape: NotchShape.punchHole,
+          hasCutout: true,
+          edge: CutoutEdge.left,
         );
-        expect(bounds, isNotNull);
-        final globalBounds = bounds!.shift(tester.getTopLeft(shapeLeft));
-        expect(globalBounds.center.dx, closeTo(470.0, 4.0));
-        expect(bounds!.bottom, greaterThan(prevLeftBottom));
-        prevLeftBottom = bounds!.bottom;
-      }
 
-      // Rotate to Reverse Landscape Right: vertical emergence remains smooth
-      double prevRightBottom = 0.0;
-      for (final p in [0.15, 0.25]) {
+        final ctrl = DynamicNotificationController();
+
         await tester.pumpWidget(
           MaterialApp(
-            home: MediaQuery(
-              data: const MediaQueryData(
-                size: Size(892, 412),
-                viewPadding: EdgeInsets.only(right: 48),
-              ),
-              child: DynamicNotifications(
-                controller: ctrl,
-                geometryOverride: landscapeRight,
-                progressOverride: p,
-                child: const SizedBox.expand(),
+            home: Scaffold(
+              body: MediaQuery(
+                data: const MediaQueryData(
+                  size: Size(892, 412),
+                  viewPadding: EdgeInsets.only(left: 48),
+                ),
+                child: DynamicNotifications(
+                  controller: ctrl,
+                  geometryOverride: leftGeometry,
+                  child: const SizedBox.expand(),
+                ),
               ),
             ),
           ),
         );
-        await tester.pump();
-        final shapeRight = find.byKey(const ValueKey('dynamic-notification-shape'));
-        expect(shapeRight, findsOneWidget);
 
-        Rect? bounds;
-        expect(
-          shapeRight,
-          paints..something((Symbol method, List<dynamic> args) {
-            if (method == #drawPath) {
-              bounds = (args[0] as Path).getBounds();
-              return true;
-            }
-            return false;
-          }),
+        ctrl.show(
+          DynamicNotification(
+            title: 'Downward Action Test',
+            duration: null,
+            onTap: () => opened = true,
+          ),
         );
-        expect(bounds, isNotNull);
-        final globalBounds = bounds!.shift(tester.getTopLeft(shapeRight));
-        expect(globalBounds.center.dx, closeTo(422.0, 4.0));
-        expect(bounds!.bottom, greaterThan(prevRightBottom));
-        prevRightBottom = bounds!.bottom;
-      }
-    });
+        await tester.pumpAndSettle();
 
-    testWidgets('9. Top-notch behavior remains unchanged with fluid neck attachment', (tester) async {
-      final ctrl = DynamicNotificationController();
-      const testSize = Size(393, 852);
-      const pillBounds = Rect.fromLTWH(134.5, 11, 124, 37);
+        // Small vertical drag that does not reach open threshold (15px < 44px): springs back
+        var gesture = await tester.startGesture(
+          tester.getCenter(find.text('Downward Action Test')),
+        );
+        await gesture.moveBy(const Offset(0, 15));
+        await tester.pump();
+        await gesture.up();
+        await tester.pump();
+        expect(ctrl.interactionState, NotificationInteractionState.returning);
+        await tester.pumpAndSettle();
+        expect(ctrl.interactionState, NotificationInteractionState.idle);
+        expect(opened, isFalse);
 
-      const islandGeo = NotchGeometry(
-        bounds: pillBounds,
-        center: Offset(196.5, 29.5),
-        width: 124,
-        height: 37,
-        top: 11,
-        bottom: 48,
-        screenSize: testSize,
-        insets: EdgeInsets.only(top: 54),
-        source: NotchGeometrySource.displayFeature,
-        confidence: NotchGeometryConfidence.exact,
-        shape: NotchShape.pill,
-        hasCutout: true,
-        edge: CutoutEdge.top,
-      );
+        // Downward drag by 55px (threshold is 44px) triggers open
+        gesture = await tester.startGesture(
+          tester.getCenter(find.text('Downward Action Test')),
+        );
+        await gesture.moveBy(const Offset(0, 55));
+        await tester.pump();
+        await gesture.up();
+        await tester.pumpAndSettle();
+        expect(opened, isTrue);
+      },
+    );
 
-      double prevBottom = 0.0;
-      for (final p in [0.10, 0.20, 0.28]) {
+    testWidgets(
+      '15. Side-cutout: tap to open and long press hold remain safe',
+      (tester) async {
+        var tapped = false;
+        const leftGeometry = NotchGeometry(
+          bounds: Rect.fromLTWH(12, 190, 24, 24),
+          center: Offset(24, 202),
+          width: 24,
+          height: 24,
+          top: 190,
+          bottom: 214,
+          screenSize: Size(892, 412),
+          insets: EdgeInsets.only(left: 48),
+          source: NotchGeometrySource.displayFeature,
+          confidence: NotchGeometryConfidence.exact,
+          shape: NotchShape.punchHole,
+          hasCutout: true,
+          edge: CutoutEdge.left,
+        );
+
+        final ctrl = DynamicNotificationController();
+
         await tester.pumpWidget(
           MaterialApp(
-            home: MediaQuery(
-              data: const MediaQueryData(
-                size: testSize,
-                viewPadding: EdgeInsets.only(top: 54),
-              ),
-              child: DynamicNotifications(
-                controller: ctrl,
-                geometryOverride: islandGeo,
-                progressOverride: p,
-                child: const SizedBox.expand(),
+            home: Scaffold(
+              body: MediaQuery(
+                data: const MediaQueryData(
+                  size: Size(892, 412),
+                  viewPadding: EdgeInsets.only(left: 48),
+                ),
+                child: DynamicNotifications(
+                  controller: ctrl,
+                  geometryOverride: leftGeometry,
+                  child: const SizedBox.expand(),
+                ),
               ),
             ),
           ),
         );
+
+        ctrl.show(
+          DynamicNotification(
+            title: 'Tap vs Hold',
+            duration: const Duration(seconds: 3),
+            onTap: () => tapped = true,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Long press: hold down for 500ms (> 350ms maxTapDuration)
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.text('Tap vs Hold')),
+        );
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(ctrl.interactionState, NotificationInteractionState.holding);
+
+        // Release without dragging: does NOT trigger tap
+        await gesture.up();
         await tester.pump();
+        expect(tapped, isFalse);
+        expect(ctrl.interactionState, NotificationInteractionState.idle);
 
-        final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
-        Rect? bounds;
-        expect(
-          shape,
-          paints..something((Symbol method, List<dynamic> args) {
-            if (method == #drawPath) {
-              bounds = (args[0] as Path).getBounds();
-              return true;
-            }
-            return false;
-          }),
-        );
-        expect(bounds, isNotNull);
-        expect(bounds!.center.dx, closeTo(196.5, 2.0));
-        expect(bounds!.top, lessThanOrEqualTo(islandGeo.anchorTop));
-        expect(bounds!.bottom, greaterThan(prevBottom));
-        prevBottom = bounds!.bottom;
-      }
-    });
-
-    testWidgets('10. Exact reverse dismissal: upward vertical drag scrubs morph progress in reverse and dismisses', (tester) async {
-      tester.view.physicalSize = const Size(892, 412);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      const leftGeometry = NotchGeometry(
-        bounds: Rect.fromLTWH(12, 190, 24, 24),
-        center: Offset(24, 202),
-        width: 24,
-        height: 24,
-        top: 190,
-        bottom: 214,
-        screenSize: Size(892, 412),
-        insets: EdgeInsets.only(left: 48),
-        source: NotchGeometrySource.displayFeature,
-        confidence: NotchGeometryConfidence.exact,
-        shape: NotchShape.punchHole,
-        hasCutout: true,
-        edge: CutoutEdge.left,
-      );
-
-      final ctrl = DynamicNotificationController();
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: MediaQuery(
-              data: const MediaQueryData(
-                size: Size(892, 412),
-                viewPadding: EdgeInsets.only(left: 48),
-              ),
-              child: DynamicNotifications(
-                controller: ctrl,
-                geometryOverride: leftGeometry,
-                child: const SizedBox.expand(),
-              ),
-            ),
-          ),
-        ),
-      );
-
-      ctrl.show(
-        const DynamicNotification(
-          title: 'Vertical Reverse Dismissal',
-          duration: null,
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      final gesture = await tester.startGesture(
-        tester.getCenter(find.text('Vertical Reverse Dismissal')),
-      );
-
-      // Drag vertically upward by -40px (past -32px dismiss threshold, 40 / 80 = 0.5 morph progress)
-      await gesture.moveBy(const Offset(0, -40));
-      await tester.pump();
-
-      expect(ctrl.interactionState, NotificationInteractionState.dragging);
-      expect(ctrl.morphProgress, closeTo(40.0 / 80.0, 0.02));
-
-      // Release gesture to complete vertical dismissal into virtual top-center
-      await gesture.up();
-      await tester.pump();
-      expect(ctrl.interactionState, NotificationInteractionState.dismissing);
-
-      await tester.pumpAndSettle();
-      expect(ctrl.currentNotification, isNull);
-    });
-
-    testWidgets('11. Manual drag return continuity: shape bottom moves monotonically upward during reverse drag', (tester) async {
-      tester.view.physicalSize = const Size(892, 412);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      const leftGeometry = NotchGeometry(
-        bounds: Rect.fromLTWH(12, 190, 24, 24),
-        center: Offset(24, 202),
-        width: 24,
-        height: 24,
-        top: 190,
-        bottom: 214,
-        screenSize: Size(892, 412),
-        insets: EdgeInsets.only(left: 48),
-        source: NotchGeometrySource.displayFeature,
-        confidence: NotchGeometryConfidence.exact,
-        shape: NotchShape.punchHole,
-        hasCutout: true,
-        edge: CutoutEdge.left,
-      );
-
-      final ctrl = DynamicNotificationController();
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: MediaQuery(
-              data: const MediaQueryData(
-                size: Size(892, 412),
-                viewPadding: EdgeInsets.only(left: 48),
-              ),
-              child: DynamicNotifications(
-                controller: ctrl,
-                geometryOverride: leftGeometry,
-                child: const SizedBox.expand(),
-              ),
-            ),
-          ),
-        ),
-      );
-
-      ctrl.show(
-        const DynamicNotification(
-          title: 'Monotonic Drag Return',
-          duration: null,
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      final gesture = await tester.startGesture(
-        tester.getCenter(find.text('Monotonic Drag Return')),
-      );
-
-      // Step drag upward from 0 to -60px in -10px steps
-      double prevBottom = double.infinity;
-      final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
-
-      for (int step = 1; step <= 6; step++) {
-        await gesture.moveBy(const Offset(0, -10));
-        await tester.pump();
-
-        Rect? currentBounds;
-        expect(
-          shape,
-          paints..something((Symbol method, List<dynamic> args) {
-            if (method == #drawPath) {
-              currentBounds = (args[0] as Path).getBounds();
-              return true;
-            }
-            return false;
-          }),
-        );
-        expect(currentBounds, isNotNull);
-
-        final curBottom = currentBounds!.bottom;
-        expect(
-          curBottom,
-          lessThanOrEqualTo(prevBottom + 1.0),
-          reason: 'Shape bottom moved downward during upward drag',
-        );
-        prevBottom = curBottom;
-      }
-
-      await gesture.up();
-      await tester.pumpAndSettle();
-    });
-
-    testWidgets('12. Repeated notification lifecycle executes clean entrance and exit without state corruption', (tester) async {
-      tester.view.physicalSize = const Size(892, 412);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      const leftGeometry = NotchGeometry(
-        bounds: Rect.fromLTWH(12, 190, 24, 24),
-        center: Offset(24, 202),
-        width: 24,
-        height: 24,
-        top: 190,
-        bottom: 214,
-        screenSize: Size(892, 412),
-        insets: EdgeInsets.only(left: 48),
-        source: NotchGeometrySource.displayFeature,
-        confidence: NotchGeometryConfidence.exact,
-        shape: NotchShape.punchHole,
-        hasCutout: true,
-        edge: CutoutEdge.left,
-      );
-
-      final ctrl = DynamicNotificationController();
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: MediaQuery(
-              data: const MediaQueryData(
-                size: Size(892, 412),
-                viewPadding: EdgeInsets.only(left: 48),
-              ),
-              child: DynamicNotifications(
-                controller: ctrl,
-                geometryOverride: leftGeometry,
-                child: const SizedBox.expand(),
-              ),
-            ),
-          ),
-        ),
-      );
-
-      // Notification 1
-      ctrl.show(const DynamicNotification(title: 'Notif 1', duration: null));
-      await tester.pumpAndSettle();
-      expect(find.text('Notif 1'), findsOneWidget);
-      ctrl.dismiss();
-      await tester.pumpAndSettle();
-      expect(ctrl.currentNotification, isNull);
-
-      // Notification 2
-      ctrl.show(const DynamicNotification(title: 'Notif 2', duration: null));
-      await tester.pumpAndSettle();
-      expect(find.text('Notif 2'), findsOneWidget);
-      ctrl.dismiss();
-      await tester.pumpAndSettle();
-      expect(ctrl.currentNotification, isNull);
-
-      // Notification 3
-      ctrl.show(const DynamicNotification(title: 'Notif 3', duration: null));
-      await tester.pumpAndSettle();
-      expect(find.text('Notif 3'), findsOneWidget);
-    });
-
-    testWidgets('14. Side-cutout: downward drag triggers open action and springs back on small gesture', (tester) async {
-      var opened = false;
-      const leftGeometry = NotchGeometry(
-        bounds: Rect.fromLTWH(12, 190, 24, 24),
-        center: Offset(24, 202),
-        width: 24,
-        height: 24,
-        top: 190,
-        bottom: 214,
-        screenSize: Size(892, 412),
-        insets: EdgeInsets.only(left: 48),
-        source: NotchGeometrySource.displayFeature,
-        confidence: NotchGeometryConfidence.exact,
-        shape: NotchShape.punchHole,
-        hasCutout: true,
-        edge: CutoutEdge.left,
-      );
-
-      final ctrl = DynamicNotificationController();
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: MediaQuery(
-              data: const MediaQueryData(
-                size: Size(892, 412),
-                viewPadding: EdgeInsets.only(left: 48),
-              ),
-              child: DynamicNotifications(
-                controller: ctrl,
-                geometryOverride: leftGeometry,
-                child: const SizedBox.expand(),
-              ),
-            ),
-          ),
-        ),
-      );
-
-      ctrl.show(
-        DynamicNotification(
-          title: 'Downward Action Test',
-          duration: null,
-          onTap: () => opened = true,
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      // Small vertical drag that does not reach open threshold (15px < 44px): springs back
-      var gesture = await tester.startGesture(tester.getCenter(find.text('Downward Action Test')));
-      await gesture.moveBy(const Offset(0, 15));
-      await tester.pump();
-      await gesture.up();
-      await tester.pump();
-      expect(ctrl.interactionState, NotificationInteractionState.returning);
-      await tester.pumpAndSettle();
-      expect(ctrl.interactionState, NotificationInteractionState.idle);
-      expect(opened, isFalse);
-
-      // Downward drag by 55px (threshold is 44px) triggers open
-      gesture = await tester.startGesture(tester.getCenter(find.text('Downward Action Test')));
-      await gesture.moveBy(const Offset(0, 55));
-      await tester.pump();
-      await gesture.up();
-      await tester.pumpAndSettle();
-      expect(opened, isTrue);
-    });
-
-    testWidgets('15. Side-cutout: tap to open and long press hold remain safe', (tester) async {
-      var tapped = false;
-      const leftGeometry = NotchGeometry(
-        bounds: Rect.fromLTWH(12, 190, 24, 24),
-        center: Offset(24, 202),
-        width: 24,
-        height: 24,
-        top: 190,
-        bottom: 214,
-        screenSize: Size(892, 412),
-        insets: EdgeInsets.only(left: 48),
-        source: NotchGeometrySource.displayFeature,
-        confidence: NotchGeometryConfidence.exact,
-        shape: NotchShape.punchHole,
-        hasCutout: true,
-        edge: CutoutEdge.left,
-      );
-
-      final ctrl = DynamicNotificationController();
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: MediaQuery(
-              data: const MediaQueryData(
-                size: Size(892, 412),
-                viewPadding: EdgeInsets.only(left: 48),
-              ),
-              child: DynamicNotifications(
-                controller: ctrl,
-                geometryOverride: leftGeometry,
-                child: const SizedBox.expand(),
-              ),
-            ),
-          ),
-        ),
-      );
-
-      ctrl.show(
-        DynamicNotification(
-          title: 'Tap vs Hold',
-          duration: const Duration(seconds: 3),
-          onTap: () => tapped = true,
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      // Long press: hold down for 500ms (> 350ms maxTapDuration)
-      final gesture = await tester.startGesture(tester.getCenter(find.text('Tap vs Hold')));
-      await tester.pump(const Duration(milliseconds: 500));
-      expect(ctrl.interactionState, NotificationInteractionState.holding);
-
-      // Release without dragging: does NOT trigger tap
-      await gesture.up();
-      await tester.pump();
-      expect(tapped, isFalse);
-      expect(ctrl.interactionState, NotificationInteractionState.idle);
-
-      // Short tap: triggers tap callback
-      await tester.tap(find.text('Tap vs Hold'));
-      await tester.pumpAndSettle();
-      expect(tapped, isTrue);
-    });
+        // Short tap: triggers tap callback
+        await tester.tap(find.text('Tap vs Hold'));
+        await tester.pumpAndSettle();
+        expect(tapped, isTrue);
+      },
+    );
   });
 }
