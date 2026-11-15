@@ -87,7 +87,7 @@ class _DemoAppState extends State<DemoApp> {
       message: 'Maya sent you the final design.',
       icon: Icons.notifications_outlined,
       accent: _red,
-      onTap: () => setState(() => _opened = true),
+      onOpen: () => setState(() => _opened = true),
     ),
   );
 

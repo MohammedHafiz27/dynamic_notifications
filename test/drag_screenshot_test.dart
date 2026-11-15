@@ -67,7 +67,7 @@ void main() {
         title: 'Downward Drag Audit',
         message: 'White background must persist at all drag offsets',
         duration: null,
-        onTap: () => opened = true,
+        onOpen: () => opened = true,
       ),
     );
     await tester.pump();

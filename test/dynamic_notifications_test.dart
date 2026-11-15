@@ -313,7 +313,7 @@ void main() {
       DynamicNotification(
         title: 'Persistent',
         duration: null,
-        onTap: () => taps++,
+        onOpen: () => taps++,
       ),
     );
     await tester.pumpAndSettle();
@@ -457,7 +457,7 @@ void main() {
       DynamicNotification(
         title: 'Tap to Open',
         duration: null,
-        onTap: () => opened++,
+        onOpen: () => opened++,
       ),
     );
     await tester.pumpAndSettle();
@@ -481,7 +481,7 @@ void main() {
       DynamicNotification(
         title: 'Swipe Up',
         duration: null,
-        onTap: () => opened++,
+        onOpen: () => opened++,
       ),
     );
     await tester.pumpAndSettle();
@@ -515,7 +515,7 @@ void main() {
         DynamicNotification(
           title: 'Fling Up',
           duration: null,
-          onTap: () => opened++,
+          onOpen: () => opened++,
         ),
       );
       await tester.pumpAndSettle();
@@ -538,7 +538,7 @@ void main() {
       DynamicNotification(
         title: 'Swipe Down',
         duration: null,
-        onTap: () => opened++,
+        onOpen: () => opened++,
       ),
     );
     await tester.pumpAndSettle();
@@ -569,7 +569,7 @@ void main() {
         DynamicNotification(
           title: 'Spring Back',
           duration: null,
-          onTap: () => opened++,
+          onOpen: () => opened++,
         ),
       );
       await tester.pumpAndSettle();
@@ -631,7 +631,7 @@ void main() {
         DynamicNotification(
           title: 'Long Hold',
           duration: const Duration(seconds: 2),
-          onTap: () => opened++,
+          onOpen: () => opened++,
         ),
       );
       await tester.pumpAndSettle();
@@ -742,7 +742,7 @@ void main() {
       DynamicNotification(
         title: 'Single Open',
         duration: null,
-        onTap: () => opened++,
+        onOpen: () => opened++,
       ),
     );
     await tester.pumpAndSettle();
@@ -858,7 +858,7 @@ void main() {
         DynamicNotification(
           title: 'Direction Independence',
           duration: null,
-          onTap: () => opened++,
+          onOpen: () => opened++,
         ),
       );
       await tester.pumpAndSettle();
@@ -1148,7 +1148,7 @@ void main() {
           title: 'Open Drag',
           message: 'Triggers open callback',
           duration: null,
-          onTap: () => opened++,
+          onOpen: () => opened++,
         ),
       );
       await tester.pump();
@@ -1366,7 +1366,7 @@ void main() {
           title: 'Detachment Prevention',
           message: 'Exit transition test',
           duration: null,
-          onTap: () => opened = true,
+          onOpen: () => opened = true,
         ),
       );
       await tester.pump();
@@ -1429,7 +1429,7 @@ void main() {
           title: 'Duplicate Guard',
           message: 'Rapid interaction test',
           duration: null,
-          onTap: () => openCount++,
+          onOpen: () => openCount++,
         ),
       );
       await tester.pump();
@@ -1471,7 +1471,7 @@ void main() {
           title: 'Cancel Interruption',
           message: 'Cancel and re-touch test',
           duration: null,
-          onTap: () => opened++,
+          onOpen: () => opened++,
         ),
       );
       await tester.pump();
@@ -1640,7 +1640,7 @@ void main() {
           title: 'Horizontal Swipe',
           message: 'Should not trigger open',
           duration: null,
-          onTap: () => opened++,
+          onOpen: () => opened++,
         ),
       );
       await tester.pump();
@@ -1861,7 +1861,7 @@ void main() {
             title: 'Reversal Drag',
             message: 'Real-time recovery',
             duration: null,
-            onTap: () => opened++,
+            onOpen: () => opened++,
           ),
         );
         await tester.pumpAndSettle();
@@ -2098,7 +2098,7 @@ void main() {
       },
     );
 
-    testWidgets('13. Dismissal does not trigger onTap open callback', (
+    testWidgets('13. Dismissal does not trigger onOpen callback', (
       tester,
     ) async {
       await mount(tester);
@@ -2107,7 +2107,7 @@ void main() {
         DynamicNotification(
           title: 'Dismissal No Open',
           duration: null,
-          onTap: () => openCalls++,
+          onOpen: () => openCalls++,
         ),
       );
       await tester.pumpAndSettle();
@@ -2133,7 +2133,7 @@ void main() {
           DynamicNotification(
             title: 'Downward Open Intact',
             duration: null,
-            onTap: () => openCalls++,
+            onOpen: () => openCalls++,
           ),
         );
         await tester.pumpAndSettle();
@@ -2167,7 +2167,7 @@ void main() {
         DynamicNotification(
           title: 'Tap Open Intact',
           duration: null,
-          onTap: () => openCalls++,
+          onOpen: () => openCalls++,
         ),
       );
       await tester.pumpAndSettle();
@@ -2188,7 +2188,7 @@ void main() {
           DynamicNotification(
             title: 'Hold Intact',
             duration: const Duration(seconds: 1),
-            onTap: () => openCalls++,
+            onOpen: () => openCalls++,
           ),
         );
         await tester.pumpAndSettle();
@@ -2526,7 +2526,7 @@ void main() {
           DynamicNotification(
             title: 'Duplicate Callback Guard',
             duration: null,
-            onTap: () {},
+            onOpen: () {},
           ),
         );
         await tester.pumpAndSettle();
@@ -3950,7 +3950,7 @@ void main() {
           DynamicNotification(
             title: 'Downward Action Test',
             duration: null,
-            onTap: () => opened = true,
+            onOpen: () => opened = true,
           ),
         );
         await tester.pumpAndSettle();
@@ -4024,7 +4024,7 @@ void main() {
           DynamicNotification(
             title: 'Tap vs Hold',
             duration: const Duration(seconds: 3),
-            onTap: () => tapped = true,
+            onOpen: () => tapped = true,
           ),
         );
         await tester.pumpAndSettle();
@@ -4334,7 +4334,7 @@ void main() {
     );
 
     testWidgets(
-      '5. Swipe down past open threshold: onTap callback called once and card exits',
+      '5. Swipe down past open threshold: onOpen callback called once and card exits',
       (tester) async {
         await mount(tester);
         var tapCount = 0;
@@ -4342,7 +4342,7 @@ void main() {
           DynamicNotification(
             title: 'Swipe Down Open',
             duration: null,
-            onTap: () => tapCount++,
+            onOpen: () => tapCount++,
           ),
         );
         await tester.pumpAndSettle();

@@ -170,7 +170,7 @@ No native configuration or Podfile changes are required. Geometry detection on i
 - `dragging` — User is actively dragging vertically.
 - `holding` — Touching and holding card in place.
 - `dismissing` — Released beyond threshold or flung upward; card is exiting.
-- `opening` — Tapped or swiped down beyond threshold; triggers `onTap`.
+- `opening` — Tapped or swiped down beyond threshold; triggers `onOpen`.
 - `returning` — Released below threshold; smoothly returning to rest.
 
 ### `DynamicNotification` (Data Model)
@@ -183,7 +183,7 @@ No native configuration or Podfile changes are required. Geometry detection on i
 | `avatar` | `ImageProvider?` | `null` | Circular avatar image (takes priority over `icon`). |
 | `accent` | `Color?` | `null` | Accent color applied to the leading icon. |
 | `duration` | `Duration?` | `Duration(seconds: 2)` | Display time before auto-dismissal (`null` for persistent card). |
-| `onTap` | `VoidCallback?` | `null` | Callback executed when tapped or swiped downward past `openThreshold`. Tap automatically dismisses the card. |
+| `onOpen` | `VoidCallback?` | `null` | Called when the user taps the card or swipes it down past the open threshold. |
 | `contentBuilder` | `WidgetBuilder?` | `null` | Custom widget layout replacing the built-in card row. |
 | `style` | `DynamicNotificationStyle` | `const DynamicNotificationStyle()` | Appearance overrides (background color, border radius, padding). |
 
@@ -277,7 +277,7 @@ notifications.show(
 1. **Geometry Stage**: Resolves physical aperture bounds, horizontal anchor, and drop origin via native Android channel or Flutter metrics.
 2. **Droplet Emergence**: An elongated teardrop path emerges from the cutout anchor and extends downward using staged transition curves.
 3. **Card Morph**: The droplet expands outward and morphs into the settled notification card.
-4. **Gestures & Dismissal**: Dragging upward reverses the morph into the cutout; dragging downward or tapping triggers `onTap`. Sub-threshold releases smoothly return to rest via a 260 ms cubic ease-out curve, while dismissals and timeouts play the entrance animation in reverse.
+4. **Gestures & Dismissal**: Dragging upward reverses the morph into the cutout; dragging downward or tapping triggers `onOpen`. Sub-threshold releases smoothly return to rest via a 260 ms cubic ease-out curve, while dismissals and timeouts play the entrance animation in reverse.
 
 ---
 

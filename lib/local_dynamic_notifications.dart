@@ -26,7 +26,7 @@ class DynamicNotification {
     this.icon,
     this.avatar,
     this.accent,
-    this.onTap,
+    this.onOpen,
     this.contentBuilder,
     this.style = const DynamicNotificationStyle(),
     this.duration = const Duration(seconds: 2),
@@ -37,7 +37,9 @@ class DynamicNotification {
   final IconData? icon;
   final ImageProvider<Object>? avatar;
   final Color? accent;
-  final VoidCallback? onTap;
+
+  /// Called when the user taps the card or swipes it down past the open threshold.
+  final VoidCallback? onOpen;
 
   /// Replaces the default row. The host provides the animated card and gestures.
   /// [title] and [message] still supply the card's accessibility announcement.
@@ -447,7 +449,7 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
     }
     setState(() => _interactionState = NotificationInteractionState.opening);
     _springController.stop();
-    final callback = _current?.onTap;
+    final callback = _current?.onOpen;
     _exit();
     callback?.call();
   }
