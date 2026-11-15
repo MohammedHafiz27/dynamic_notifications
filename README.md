@@ -18,7 +18,6 @@ The notification emerges directly from the device's physical camera cutout or Dy
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/MohammedHafiz27/dynamic_notifications/main/docs/assets/ios-demo.gif" width="340" alt="iOS Dynamic Island Notification Demo">
-  <!-- TODO(verify): URL will return 200 once feature branch is merged into main and pushed to remote -->
   <!-- TODO(verify): add an Android punch-hole demo GIF -->
   <br>
   <em>Captured on iPhone 16 Pro Max simulator running the example application (iOS demonstrated).</em>
