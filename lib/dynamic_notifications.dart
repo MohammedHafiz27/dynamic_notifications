@@ -1145,8 +1145,7 @@ class _NotificationPainter extends CustomPainter {
       minTip = 0.0;
     }
 
-    final topFlat = math.max(0.0, width / 2 - corner);
-    final botFlat = math.max(0.0, width / 2 - corner);
+    final flat = math.max(0.0, width / 2 - corner);
 
     final tint = compact ? 1.0 : _tint.transform(progress);
     final bodyColor = Color.lerp(Colors.black, surface, tint)!;
@@ -1361,13 +1360,13 @@ class _NotificationPainter extends CustomPainter {
       final wBulb = width / 2;
 
       path = Path();
-      if (topFlat > 0) {
+      if (flat > 0) {
         // Expanded card with flat top and bottom edges
         path
-          ..moveTo(centerX - topFlat, rect.top)
-          ..lineTo(centerX + topFlat, rect.top)
+          ..moveTo(centerX - flat, rect.top)
+          ..lineTo(centerX + flat, rect.top)
           ..cubicTo(
-            centerX + topFlat + (wBulb - topFlat) * 0.5523,
+            centerX + flat + (wBulb - flat) * 0.5523,
             rect.top,
             centerX + wBulb,
             bulbY - (bulbY - rect.top) * 0.5523,
@@ -1377,14 +1376,14 @@ class _NotificationPainter extends CustomPainter {
           ..cubicTo(
             centerX + wBulb,
             bulbY + (rect.bottom - bulbY) * 0.5523,
-            centerX + botFlat + (wBulb - botFlat) * 0.5523,
+            centerX + flat + (wBulb - flat) * 0.5523,
             rect.bottom,
-            centerX + botFlat,
+            centerX + flat,
             rect.bottom,
           )
-          ..lineTo(centerX - botFlat, rect.bottom)
+          ..lineTo(centerX - flat, rect.bottom)
           ..cubicTo(
-            centerX - botFlat - (wBulb - botFlat) * 0.5523,
+            centerX - flat - (wBulb - flat) * 0.5523,
             rect.bottom,
             centerX - wBulb,
             bulbY + (rect.bottom - bulbY) * 0.5523,
@@ -1394,9 +1393,9 @@ class _NotificationPainter extends CustomPainter {
           ..cubicTo(
             centerX - wBulb,
             bulbY - (bulbY - rect.top) * 0.5523,
-            centerX - topFlat - (wBulb - topFlat) * 0.5523,
+            centerX - flat - (wBulb - flat) * 0.5523,
             rect.top,
-            centerX - topFlat,
+            centerX - flat,
             rect.top,
           )
           ..close();
