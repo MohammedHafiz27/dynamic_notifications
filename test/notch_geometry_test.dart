@@ -262,7 +262,6 @@ void main() {
         expect(geometry.edge, CutoutEdge.left);
         expect(geometry.source, NotchGeometrySource.displayFeature);
         expect(geometry.anchorPoint, const Offset(33.0, 206.0));
-        expect(geometry.emergenceDirection, const Offset(1.0, 0.0));
       },
     );
 
@@ -1003,7 +1002,6 @@ void main() {
       expect(geometry.edge, CutoutEdge.left);
       expect(geometry.source, NotchGeometrySource.displayFeature);
       expect(geometry.anchorPoint, const Offset(39.0, 24.0));
-      expect(geometry.emergenceDirection, const Offset(1.0, 0.0));
     });
 
     test('detects side punch hole in immersive landscape on right edge with zero insets', () {
@@ -1029,7 +1027,6 @@ void main() {
       expect(geometry.edge, CutoutEdge.right);
       expect(geometry.source, NotchGeometrySource.displayFeature);
       expect(geometry.anchorPoint, const Offset(857.0, 24.0));
-      expect(geometry.emergenceDirection, const Offset(-1.0, 0.0));
     });
 
     test('detects centered top punch hole on tablet in landscape', () {
@@ -1872,7 +1869,7 @@ void main() {
   });
 
   group('Horizontal Side-Cutout Geometry and Priority', () {
-    test('classifies CutoutEdge.left correctly with accurate anchorPoint and emergenceDirection', () {
+    test('classifies CutoutEdge.left correctly with accurate anchorPoint', () {
       const mediaQuery = MediaQueryData(
         size: Size(892, 412),
         viewPadding: EdgeInsets.only(left: 48),
@@ -1893,11 +1890,10 @@ void main() {
       expect(geo.hasCutout, isTrue);
       expect(geo.edge, CutoutEdge.left);
       expect(geo.anchorPoint, const Offset(35.0, 202.0));
-      expect(geo.emergenceDirection, const Offset(1.0, 0.0));
       expect(geo.shape, NotchShape.punchHole);
     });
 
-    test('classifies CutoutEdge.right correctly with accurate anchorPoint and emergenceDirection', () {
+    test('classifies CutoutEdge.right correctly with accurate anchorPoint', () {
       const mediaQuery = MediaQueryData(
         size: Size(892, 412),
         viewPadding: EdgeInsets.only(right: 48),
@@ -1918,7 +1914,6 @@ void main() {
       expect(geo.hasCutout, isTrue);
       expect(geo.edge, CutoutEdge.right);
       expect(geo.anchorPoint, const Offset(857.0, 202.0));
-      expect(geo.emergenceDirection, const Offset(-1.0, 0.0));
       expect(geo.shape, NotchShape.punchHole);
     });
 
@@ -1954,7 +1949,6 @@ void main() {
       expect(geo.edge, CutoutEdge.top);
       expect(geo.bounds, const Rect.fromLTWH(434, 4, 24, 24));
       expect(geo.anchorPoint, const Offset(446.0, 27.0));
-      expect(geo.emergenceDirection, const Offset(0.0, 1.0));
     });
 
     test('multiple cutouts priority: left cutout takes priority over right cutout when no top cutout exists', () {
@@ -2108,7 +2102,6 @@ void main() {
       expect(landscapeGeo.hasCutout, isTrue);
       expect(landscapeGeo.edge, CutoutEdge.left);
       expect(landscapeGeo.anchorPoint, const Offset(33.0, 206.0));
-      expect(landscapeGeo.emergenceDirection, const Offset(1.0, 0.0));
     });
 
     test('AndroidCutoutGeometryProvider loads and caches side cutout edge metadata', () async {
@@ -2144,7 +2137,6 @@ void main() {
       expect(geo.edge, CutoutEdge.left);
       expect(geo.bounds, const Rect.fromLTWH(15.0, 190.0, 30.0, 30.0));
       expect(geo.anchorPoint, const Offset(44.0, 205.0));
-      expect(geo.emergenceDirection, const Offset(1.0, 0.0));
 
       provider.clear();
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -2209,7 +2201,6 @@ void main() {
       expect(geo.hasCutout, isTrue);
       expect(geo.edge, CutoutEdge.left);
       expect(geo.anchorPoint, const Offset(33.0, 28.0));
-      expect(geo.emergenceDirection, const Offset(1.0, 0.0));
     });
 
     test('AndroidCutoutGeometryProvider rejects cross-screen multi-cutout path and uses edge-specific bounding rect', () async {
@@ -2285,7 +2276,6 @@ void main() {
       expect(geo.edge, CutoutEdge.top);
       expect(geo.hasTopCutout, isTrue);
       expect(geo.animationOrigin, const Offset(196.5, 38.0));
-      expect(geo.animationDirection, const Offset(0.0, 1.0));
     });
 
     test('top-left corner camera (Honor View 20 in portrait): animationOrigin uses camera X', () {
@@ -2311,7 +2301,6 @@ void main() {
       expect(geo.hasTopCutout, isTrue);
       expect(geo.center.dx, 36.0);
       expect(geo.animationOrigin.dx, 36.0);
-      expect(geo.animationDirection, const Offset(0.0, 1.0));
     });
 
     test('top-left corner camera in portrait with reported left inset: preserved as CutoutEdge.top', () {
@@ -2336,7 +2325,6 @@ void main() {
       expect(geo.edge, CutoutEdge.top);
       expect(geo.hasTopCutout, isTrue);
       expect(geo.animationOrigin.dx, 12.0);
-      expect(geo.animationDirection, const Offset(0.0, 1.0));
     });
 
     test('top-right corner camera: animationOrigin uses camera X and anchorTop', () {
@@ -2359,7 +2347,6 @@ void main() {
       expect(geo.hasCutout, isTrue);
       expect(geo.hasTopCutout, isTrue);
       expect(geo.animationOrigin, const Offset(376.0, 33.0));
-      expect(geo.animationDirection, const Offset(0.0, 1.0));
     });
 
     test('left-side cutout (landscape): physical geometry is left; animationOrigin is virtual top-center', () {
@@ -2384,7 +2371,6 @@ void main() {
       expect(geo.hasTopCutout, isFalse);
       expect(geo.anchorPoint, const Offset(35.0, 202.0)); // Physical aperture anchor
       expect(geo.animationOrigin, const Offset(470.0, 4.0)); // Virtual top-center: (48 + 892) / 2 = 470
-      expect(geo.animationDirection, const Offset(0.0, 1.0)); // Downward (+Y)
     });
 
     test('right-side cutout (reverse landscape): physical geometry is right; animationOrigin is virtual top-center', () {
@@ -2409,7 +2395,6 @@ void main() {
       expect(geo.hasTopCutout, isFalse);
       expect(geo.anchorPoint, const Offset(857.0, 202.0)); // Physical aperture anchor
       expect(geo.animationOrigin, const Offset(422.0, 4.0)); // Virtual top-center: (892 - 48) / 2 = 422
-      expect(geo.animationDirection, const Offset(0.0, 1.0)); // Downward (+Y)
     });
 
     test('bottom-only cutout: physical geometry is bottom; animationOrigin is virtual top-center', () {
@@ -2433,7 +2418,6 @@ void main() {
       expect(geo.edge, CutoutEdge.bottom);
       expect(geo.hasTopCutout, isFalse);
       expect(geo.animationOrigin, const Offset(196.5, 28.0)); // Virtual top-center
-      expect(geo.animationDirection, const Offset(0.0, 1.0)); // Downward (+Y)
     });
 
     test('no-cutout fallback: animationOrigin is screen top-center safe area', () {
@@ -2456,7 +2440,6 @@ void main() {
       expect(geo.hasCutout, isFalse);
       expect(geo.hasTopCutout, isFalse);
       expect(geo.animationOrigin, const Offset(196.5, 48.0));
-      expect(geo.animationDirection, const Offset(0.0, 1.0));
     });
   });
 }

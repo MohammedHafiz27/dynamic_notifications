@@ -167,10 +167,6 @@ class NotchGeometry {
     return Offset(viewportCenter, safeTop);
   }
 
-  /// Direction vector along which the notification liquid morph emerges.
-  /// Always vertically downward (+Y) across all device orientations.
-  Offset get animationDirection => const Offset(0.0, 1.0);
-
   /// Exact 2D anchor point where the fluid droplet emerges into the display.
   Offset get anchorPoint {
     switch (edge) {
@@ -204,39 +200,6 @@ class NotchGeometry {
         return Offset(anchorX, anchorTop);
     }
   }
-
-  /// Direction vector along which the droplet emerges into the display.
-  Offset get emergenceDirection {
-    switch (edge) {
-      case CutoutEdge.left:
-        return const Offset(1.0, 0.0);
-      case CutoutEdge.right:
-        return const Offset(-1.0, 0.0);
-      case CutoutEdge.bottom:
-        return const Offset(0.0, -1.0);
-      case CutoutEdge.top:
-      case CutoutEdge.none:
-        return const Offset(0.0, 1.0);
-    }
-  }
-
-  /// Empty geometry constant for displays with no insets or cutouts.
-  static const NotchGeometry empty = NotchGeometry(
-    bounds: null,
-    center: Offset.zero,
-    width: 0.0,
-    height: 0.0,
-    top: 0.0,
-    bottom: 0.0,
-    screenSize: Size.zero,
-    insets: EdgeInsets.zero,
-    source: NotchGeometrySource.none,
-    confidence: NotchGeometryConfidence.none,
-    shape: NotchShape.none,
-    hasCutout: false,
-    edge: CutoutEdge.none,
-    devicePixelRatio: 1.0,
-  );
 
   @override
   bool operator ==(Object other) {
