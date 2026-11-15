@@ -8,7 +8,15 @@ import 'package:flutter/material.dart';
 
 import 'src/notch_geometry.dart';
 
-export 'src/notch_geometry.dart';
+export 'src/notch_geometry.dart'
+    show
+        NotchGeometry,
+        NotchGeometryDetector,
+        AndroidCutoutGeometryProvider,
+        NotchShape,
+        CutoutEdge,
+        NotchGeometrySource,
+        NotchGeometryConfidence;
 
 /// Content and behavior for one in-app notification.
 class DynamicNotification {
