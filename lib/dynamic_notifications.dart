@@ -97,12 +97,6 @@ const _expand = Interval(0.46, 0.82, curve: Curves.easeInOutCubic);
 const _reveal = Interval(0.64, 0.96, curve: Curves.easeOutCubic);
 const _tint = Interval(0.15, 0.40, curve: Curves.easeInOutCubic);
 
-/// Rendering engine used to animate the notification entrance and fluid silhouette.
-enum NotificationRenderMode {
-  /// Verified fluid morphology renderer (standard physics-based pendant drop).
-  standard,
-}
-
 /// Interaction state of the active dynamic notification.
 enum NotificationInteractionState {
   /// Notification is resting at its settled position with no active user touch.
@@ -185,7 +179,6 @@ class DynamicNotifications extends StatefulWidget {
     this.geometryOverride,
     this.debugShowGuides = false,
     this.progressOverride,
-    this.renderMode = NotificationRenderMode.standard,
     this.gestureConfig = const NotificationGestureConfig(),
   }) : assert(originLift >= 0 && originLift < double.infinity);
 
@@ -209,10 +202,6 @@ class DynamicNotifications extends StatefulWidget {
   /// Used for frame-by-frame visual inspection and screenshot validation.
   /// Defaults to null (live animation).
   final double? progressOverride;
-
-  /// The rendering engine used to draw the notification silhouette and animation.
-  /// Defaults to [NotificationRenderMode.standard].
-  final NotificationRenderMode renderMode;
 
   /// Configuration for interactive gesture thresholds and physics.
   final NotificationGestureConfig gestureConfig;
@@ -937,7 +926,6 @@ class _DynamicNotificationsState extends State<DynamicNotifications>
                         compact: compact,
                         geometry: geometry,
                         debugShowGuides: debugShowGuides,
-                        renderMode: widget.renderMode,
                         isExiting: _exiting,
                         morphProgress: morphProgress,
                       ),
@@ -984,7 +972,6 @@ class _NotificationPainter extends CustomPainter {
     required this.compact,
     this.geometry,
     this.debugShowGuides = false,
-    this.renderMode = NotificationRenderMode.standard,
     this.isExiting = false,
     this.morphProgress = 0.0,
   });
@@ -999,7 +986,6 @@ class _NotificationPainter extends CustomPainter {
   final bool compact;
   final NotchGeometry? geometry;
   final bool debugShowGuides;
-  final NotificationRenderMode renderMode;
   final bool isExiting;
   final double morphProgress;
 
@@ -1609,7 +1595,6 @@ class _NotificationPainter extends CustomPainter {
       old.compact != compact ||
       old.geometry != geometry ||
       old.debugShowGuides != debugShowGuides ||
-      old.renderMode != renderMode ||
       old.isExiting != isExiting ||
       old.morphProgress != morphProgress;
 }

@@ -136,7 +136,6 @@ No native configuration or Podfile changes are required. Geometry detection on i
 | `controller` | `DynamicNotificationController` | *Required* | Controller coordinating notification display and dismissals. |
 | `child` | `Widget` | *Required* | The underlying widget subtree (typically your navigator from `MaterialApp.builder`). |
 | `originLift` | `double` | `0.0` | Moves the automatic drop origin up by this many logical pixels (must be `>= 0`). |
-| `renderMode` | `NotificationRenderMode` | `NotificationRenderMode.standard` | Rendering engine used to draw the notification silhouette and animation. |
 | `gestureConfig` | `NotificationGestureConfig` | `const NotificationGestureConfig()` | Thresholds and curves for interactive drag, fling, tap, and spring return. |
 | `debugShowGuides` | `bool` | `false` | Renders visual guides showing detected cutout bounds, anchor origin, and neck boundaries. |
 | `geometryOverride` | `NotchGeometry?` | `null` | Manually overrides detected notch geometry (useful for testing or simulator verification). |
@@ -175,10 +174,6 @@ No native configuration or Podfile changes are required. Geometry detection on i
 - `dismissing` — Released beyond threshold or flung upward; card is exiting.
 - `opening` — Tapped or swiped down beyond threshold; triggers `onTap`.
 - `returning` — Released below threshold; smoothly returning to rest.
-
-### `NotificationRenderMode`
-
-- `NotificationRenderMode.standard` — Verified fluid morphology renderer (standard drop emergence and card transformation).
 
 ### `DynamicNotification` (Data Model)
 
