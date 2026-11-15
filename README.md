@@ -222,11 +222,6 @@ Resolves geometry from context (`detect(context)`) or metrics (`fromMediaQuery(.
 
 Singleton platform channel client (`instance`) querying native Android `DisplayCutout` coordinates over `MethodChannel('dynamic_notifications/android_geometry')`.
 
-### Testing Hooks
-
-- `DynamicNotifications.sideCutoutRendererEntered` (`@visibleForTesting bool`): Verifies unified vertical morph rendering.
-- `DynamicNotifications.resetSideCutoutRendererFlag()` (`@visibleForTesting void`): Resets the verification flag.
-
 ---
 
 ## Customization

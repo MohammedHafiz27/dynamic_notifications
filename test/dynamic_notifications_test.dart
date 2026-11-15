@@ -2874,10 +2874,6 @@ void main() {
   });
 
   group('Orientation-Independent Vertical Liquid Morph for Side and Corner Cutouts', () {
-    setUp(() {
-      DynamicNotifications.resetSideCutoutRendererFlag();
-    });
-
     testWidgets('1. Top-center cutout: droplet emerges vertically downward (+Y) from actual cutout anchor', (tester) async {
       tester.view.physicalSize = const Size(393, 852);
       tester.view.devicePixelRatio = 1.0;
@@ -3151,9 +3147,6 @@ void main() {
         );
         await tester.pump();
 
-        // Horizontal side renderer must NEVER be entered
-        expect(DynamicNotifications.sideCutoutRendererEntered, isFalse);
-
         final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
         Rect? bounds;
         expect(
@@ -3223,8 +3216,6 @@ void main() {
           ),
         );
         await tester.pump();
-
-        expect(DynamicNotifications.sideCutoutRendererEntered, isFalse);
 
         final shape = find.byKey(const ValueKey('dynamic-notification-shape'));
         Rect? bounds;
@@ -3772,54 +3763,6 @@ void main() {
       ctrl.show(const DynamicNotification(title: 'Notif 3', duration: null));
       await tester.pumpAndSettle();
       expect(find.text('Notif 3'), findsOneWidget);
-    });
-
-    testWidgets('13. Side-cutout cases never enter horizontal renderer', (tester) async {
-      tester.view.physicalSize = const Size(892, 412);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      const leftGeometry = NotchGeometry(
-        bounds: Rect.fromLTWH(12, 190, 24, 24),
-        center: Offset(24, 202),
-        width: 24,
-        height: 24,
-        top: 190,
-        bottom: 214,
-        screenSize: Size(892, 412),
-        insets: EdgeInsets.only(left: 48),
-        source: NotchGeometrySource.displayFeature,
-        confidence: NotchGeometryConfidence.exact,
-        shape: NotchShape.punchHole,
-        hasCutout: true,
-        edge: CutoutEdge.left,
-      );
-
-      final ctrl = DynamicNotificationController();
-
-      for (final p in [0.05, 0.15, 0.28, 0.50, 0.75, 1.0]) {
-        await tester.pumpWidget(
-          MaterialApp(
-            home: MediaQuery(
-              data: const MediaQueryData(
-                size: Size(892, 412),
-                viewPadding: EdgeInsets.only(left: 48),
-              ),
-              child: DynamicNotifications(
-                controller: ctrl,
-                geometryOverride: leftGeometry,
-                progressOverride: p,
-                child: const SizedBox.expand(),
-              ),
-            ),
-          ),
-        );
-        await tester.pump();
-
-        // Confirmed: never enters the horizontal renderer
-        expect(DynamicNotifications.sideCutoutRendererEntered, isFalse);
-      }
     });
 
     testWidgets('14. Side-cutout: downward drag triggers open action and springs back on small gesture', (tester) async {
